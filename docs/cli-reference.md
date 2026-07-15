@@ -32,7 +32,10 @@ work-ledger prime
 - `context` shows the current Git checkout's normalized `origin` identifier
   and the ledger location. It can run before initialization and reports that
   state in its output.
-- `prime` prints the compact operating instructions intended for coding agents.
+- `prime` prints a self-contained agent guide: the required operating protocol,
+  every command's syntax and meaningful options, valid metadata values, the
+  private ledger path, and the current repository identity when it can be
+  discovered.
 
 ## Creating and finding tasks
 
@@ -67,7 +70,7 @@ and Markdown bodies case-insensitively.
 work-ledger claim TASK-ID [--agent NAME] [--lease DURATION] [--force] [--if-match ETAG]
 work-ledger release TASK-ID [--agent NAME] [--force] [--if-match ETAG]
 work-ledger note TASK-ID [TEXT...] [--agent NAME] [--if-match ETAG]
-work-ledger update TASK-ID [--agent NAME] [--if-match ETAG] [--force] \
+work-ledger update TASK-ID [--agent NAME] [--if-match ETAG] \
   [--title TITLE] [--kind KIND] [--priority PRIORITY] [--status STATUS] \
   [--parent TASK-ID | --clear-parent] \
   [--repo PATH-OR-ID]... [--clear-repos] \

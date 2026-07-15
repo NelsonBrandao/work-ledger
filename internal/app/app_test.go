@@ -171,8 +171,56 @@ func TestLifecycleCommands(t *testing.T) {
 	runCommand(t, nil, "--home", home, "archive", "--yes", "--json")
 	runCommand(t, nil, "--home", home, "delete", child.ID, "--yes", "--json")
 	prime := runCommand(t, nil, "--home", home, "prime", "--json")
-	if !bytes.Contains(prime, []byte("instructions")) {
-		t.Fatalf("prime output = %s", prime)
+	var result primeResult
+	if err := json.Unmarshal(prime, &result); err != nil {
+		t.Fatalf("decode prime output: %v", err)
+	}
+	if len(result.Protocol) < 5 || len(result.Commands) < 10 || len(result.Values["status"]) != 5 {
+		t.Fatalf("prime result = %#v", result)
+	}
+	if !strings.Contains(result.Commands[0].Syntax, "--home PATH") {
+		t.Fatalf("prime commands = %#v", result.Commands)
+	}
+}
+
+func TestPrimeHumanOutputIsSelfContained(t *testing.T) {
+	t.Parallel()
+
+	home := filepath.Join(t.TempDir(), "ledger")
+	runCommand(t, nil, "--home", home, "init")
+	prime := runCommand(t, nil, "--home", home, "prime")
+	for _, fragment := range []string{
+		"# Work Ledger Agent Guide",
+		"## Required protocol",
+		"work-ledger new <title>",
+		"work-ledger update <task-id>",
+		"work-ledger import beans <directory>",
+		"priority: critical, high, normal, low",
+	} {
+		if !bytes.Contains(prime, []byte(fragment)) {
+			t.Fatalf("prime does not contain %q:\n%s", fragment, prime)
+		}
+	}
+}
+
+func TestNoteRejectsForce(t *testing.T) {
+	t.Parallel()
+
+	home := filepath.Join(t.TempDir(), "ledger")
+	runCommand(t, nil, "--home", home, "init")
+	createdOutput := runCommand(t, nil, "--home", home, "new", "No force note", "--json")
+	var created task.Summary
+	if err := json.Unmarshal(createdOutput, &created); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if exit := Run([]string{"--home", home, "note", created.ID, "--force"}, &stdout, &stderr); exit != 1 {
+		t.Fatalf("note --force exit = %d, want 1", exit)
+	}
+	if !strings.Contains(stderr.String(), "unknown note option") {
+		t.Fatalf("note --force error = %q", stderr.String())
 	}
 }
 

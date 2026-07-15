@@ -10,6 +10,7 @@ import (
 
 	"github.com/NelsonBrandao/work-ledger/internal/importer"
 	"github.com/NelsonBrandao/work-ledger/internal/ledger"
+	"github.com/NelsonBrandao/work-ledger/internal/repository"
 	"github.com/NelsonBrandao/work-ledger/internal/store"
 	"github.com/NelsonBrandao/work-ledger/internal/task"
 )
@@ -37,6 +38,51 @@ type updateOptions struct {
 	replaceBlockers bool
 	replaceRepos    bool
 	clearParent     bool
+}
+
+type primeCommand struct {
+	Syntax  string   `json:"syntax"`
+	Purpose string   `json:"purpose"`
+	Notes   []string `json:"notes,omitempty"`
+}
+
+type primeResult struct {
+	LedgerHome        string              `json:"ledger_home"`
+	CurrentRepository *repository.Context `json:"current_repository,omitempty"`
+	Protocol          []string            `json:"protocol"`
+	Commands          []primeCommand      `json:"commands"`
+	Values            map[string][]string `json:"values"`
+}
+
+var primeProtocol = []string{
+	"Keep all task data in the private ledger. Never create, edit, add, commit, or push ledger task files from a source repository.",
+	"Before new work, inspect work relevant to the checkout with `work-ledger --json list --here --ready` and search for an existing task with `work-ledger --json search <words>`.",
+	"Create one task for new work and name every affected repository with repeated `--repo` options. Claim an existing task before changing code.",
+	"Use a distinct `--agent` name for each agent. Add decisions and investigation results with `note`; use the ETag from `show --json` with `--if-match` for read-modify-write changes.",
+	"When stopping, release the claim. When finished, close the task with a specific summary. Archive completed work later; destructive lifecycle commands require `--yes`.",
+}
+
+var primeCommands = []primeCommand{
+	{Syntax: "work-ledger [--home PATH] [--json] <command>", Purpose: "Global form. `--home` overrides WORK_LEDGER_HOME and the default ~/work-ledger; `--json` produces structured output."},
+	{Syntax: "work-ledger init | doctor | context | prime", Purpose: "Initialize or validate the private ledger, inspect the current Git repository, or print this agent guide."},
+	{Syntax: "work-ledger new <title> [--kind KIND] [--priority PRIORITY] [--repo PATH-OR-ID]... [--tag TAG]... [--parent ID] [--blocked-by ID]...", Purpose: "Create a todo task. Repeated --repo, --tag, and --blocked-by options add multiple values."},
+	{Syntax: "work-ledger show <task-id>", Purpose: "Read one task. JSON output contains its full body and `etag` for guarded mutations."},
+	{Syntax: "work-ledger list [--all | --here | --repo PATH-OR-ID] [--ready] [--status STATUS]... [--tag TAG]... [--parent ID]", Purpose: "List active tasks. `--here` detects the current Git repository; `--ready` returns only unblocked todo tasks."},
+	{Syntax: "work-ledger search <text...>", Purpose: "Case-insensitively search active task metadata and Markdown bodies."},
+	{Syntax: "work-ledger claim <task-id> [--agent NAME] [--lease DURATION] [--if-match ETAG] [--force]", Purpose: "Set the task active and record a two-hour claim by default. Use `--force` only to replace another unexpired claim."},
+	{Syntax: "work-ledger release <task-id> [--agent NAME] [--if-match ETAG] [--force]", Purpose: "Release the caller's claim and return an active task to todo. `--force` is required to release another agent's claim."},
+	{Syntax: "work-ledger note <task-id> [text...] [--agent NAME] [--if-match ETAG]", Purpose: "Add a timestamped Activity entry. Omit text to read it from standard input."},
+	{Syntax: "work-ledger update <task-id> [--agent NAME] [--if-match ETAG] [--title TITLE] [--kind KIND] [--priority PRIORITY] [--status STATUS] [--parent ID | --clear-parent] [--repo PATH-OR-ID]... [--clear-repos] [--tag TAG]... [--clear-tags] [--blocked-by ID]... [--clear-blocked-by]", Purpose: "Change explicit metadata. Providing any --repo, --tag, or --blocked-by replaces that complete list; include all values to keep."},
+	{Syntax: "work-ledger split <parent-id> <title> [--kind KIND] [--priority PRIORITY] [--repo PATH-OR-ID]... [--tag TAG]... [--blocked-by ID]...", Purpose: "Create a child task. Repositories and tags inherit from the parent unless replaced."},
+	{Syntax: "work-ledger close <task-id> <summary> [--agent NAME] [--if-match ETAG] [--force]", Purpose: "Mark done, clear the claim, and add the summary to Activity. `--force` is required when another agent holds the claim."},
+	{Syntax: "work-ledger archive --yes | work-ledger delete <task-id> --yes", Purpose: "Archive every done/cancelled task, or permanently delete an unreferenced task. Both require explicit confirmation."},
+	{Syntax: "work-ledger import beans <directory> [--dry-run] [--repo PATH-OR-ID]...", Purpose: "Import a Beans directory without modifying it. Start with --dry-run; original IDs are retained as legacy_ids."},
+}
+
+var primeValues = map[string][]string{
+	"kind":     {"task", "bug", "investigation", "feature"},
+	"status":   {"todo", "active", "blocked", "done", "cancelled"},
+	"priority": {"critical", "high", "normal", "low"},
 }
 
 func runClaim(paths ledger.Paths, arguments []string, asJSON bool, stdout, stderr io.Writer) int {
@@ -385,6 +431,9 @@ func parseMutationWithText(command string, arguments []string) (mutationOptions,
 				options.ifMatch = arguments[index]
 			}
 		case "--force":
+			if command == "note" {
+				return options, nil, fmt.Errorf("unknown %s option %q", command, argument)
+			}
 			options.force = true
 		default:
 			if strings.HasPrefix(argument, "-") {
@@ -409,8 +458,6 @@ func parseUpdateArguments(arguments []string) (updateOptions, error) {
 	for index := 0; index < len(arguments); index++ {
 		argument := arguments[index]
 		switch argument {
-		case "--force":
-			options.force = true
 		case "--clear-parent":
 			options.clearParent = true
 		case "--clear-tags":
@@ -529,19 +576,47 @@ func runPrime(paths ledger.Paths, arguments []string, asJSON bool, stdout, stder
 	if len(arguments) > 0 {
 		return writeError(stderr, asJSON, errors.New("prime does not accept arguments"))
 	}
-	if _, err := ledger.Load(paths); err != nil {
+	config, err := ledger.Load(paths)
+	if err != nil {
 		return writeError(stderr, asJSON, err)
 	}
-	instructions := []string{
-		"Use work-ledger for non-trivial work tracking; it never writes to the source repository.",
-		"Run `work-ledger list --here --ready --json` to find relevant available work.",
-		"Create or claim a task before making changes, and use `work-ledger note` for decisions and investigation results.",
-		"Close completed work with `work-ledger close <id> <summary>`; archive it later with `work-ledger archive --yes`.",
-		"Use the etag from `work-ledger show <id> --json` as `work-ledger update --if-match` when another agent may edit the task.",
+	result := primeResult{
+		LedgerHome: paths.Home,
+		Protocol:   primeProtocol,
+		Commands:   primeCommands,
+		Values:     primeValues,
 	}
-	return writeResult(stdout, asJSON, map[string]any{"ledger_home": paths.Home, "instructions": instructions}, func() {
-		for _, instruction := range instructions {
-			fmt.Fprintln(stdout, instruction)
+	if directory, directoryErr := os.Getwd(); directoryErr == nil {
+		if context, contextErr := repository.Discover(directory); contextErr == nil {
+			context.ID = repository.ResolveAlias(context.ID, config.RepositoryAliases)
+			result.CurrentRepository = &context
 		}
+	}
+	return writeResult(stdout, asJSON, result, func() {
+		fmt.Fprintln(stdout, "<IMPORTANT>")
+		fmt.Fprintln(stdout, "# Work Ledger Agent Guide")
+		fmt.Fprintln(stdout, "")
+		fmt.Fprintf(stdout, "Private ledger: %s\n", result.LedgerHome)
+		if result.CurrentRepository != nil {
+			fmt.Fprintf(stdout, "Current repository: %s\n", result.CurrentRepository.ID)
+		} else {
+			fmt.Fprintln(stdout, "Current repository: unavailable (run `work-ledger context` inside a Git checkout)")
+		}
+		fmt.Fprintln(stdout, "")
+		fmt.Fprintln(stdout, "## Required protocol")
+		for index, instruction := range result.Protocol {
+			fmt.Fprintf(stdout, "%d. %s\n", index+1, instruction)
+		}
+		fmt.Fprintln(stdout, "")
+		fmt.Fprintln(stdout, "## Command reference")
+		for _, command := range result.Commands {
+			fmt.Fprintf(stdout, "- `%s`\n  %s\n", command.Syntax, command.Purpose)
+		}
+		fmt.Fprintln(stdout, "")
+		fmt.Fprintln(stdout, "## Valid values")
+		for _, field := range []string{"kind", "status", "priority"} {
+			fmt.Fprintf(stdout, "- %s: %s\n", field, strings.Join(result.Values[field], ", "))
+		}
+		fmt.Fprintln(stdout, "</IMPORTANT>")
 	})
 }

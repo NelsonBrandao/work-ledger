@@ -31,7 +31,7 @@ Commands:
   archive    Move completed tasks to the archive.
   delete     Permanently remove a task with --yes.
   import     Import tasks from a Beans directory.
-  prime      Print concise instructions for coding agents.
+  prime      Print a complete operating guide for coding agents.
 `
 
 type options struct {
