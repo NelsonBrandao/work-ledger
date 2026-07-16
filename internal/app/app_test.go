@@ -54,6 +54,78 @@ func TestUnknownCommand(t *testing.T) {
 	}
 }
 
+func TestCommandSpecificHelp(t *testing.T) {
+	t.Parallel()
+
+	for _, arguments := range [][]string{
+		{"update", "--help"},
+		{"help", "update"},
+	} {
+		var stdout bytes.Buffer
+		var stderr bytes.Buffer
+		if exit := Run(arguments, &stdout, &stderr); exit != 0 {
+			t.Fatalf("%v exit = %d, stderr = %s", arguments, exit, stderr.String())
+		}
+		for _, fragment := range []string{
+			"Usage: work-ledger update <task-id>",
+			"Supplying any --repo, --tag, or --blocked-by flag replaces that complete list",
+			"Use the etag",
+		} {
+			if !strings.Contains(stdout.String(), fragment) {
+				t.Fatalf("%v help does not contain %q:\n%s", arguments, fragment, stdout.String())
+			}
+		}
+	}
+}
+
+func TestEveryCommandHasHelp(t *testing.T) {
+	t.Parallel()
+
+	for _, command := range []string{
+		"init", "doctor", "context", "new", "show", "list", "search", "claim",
+		"release", "note", "update", "split", "close", "archive", "delete", "import", "prime",
+	} {
+		var stdout bytes.Buffer
+		var stderr bytes.Buffer
+		if exit := Run([]string{command, "--help"}, &stdout, &stderr); exit != 0 {
+			t.Fatalf("%s --help exit = %d, stderr = %s", command, exit, stderr.String())
+		}
+		if !strings.Contains(stdout.String(), "Usage: work-ledger "+command) {
+			t.Fatalf("%s --help output = %s", command, stdout.String())
+		}
+	}
+}
+
+func TestHelpHelpShowsGeneralUsage(t *testing.T) {
+	t.Parallel()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if exit := Run([]string{"help", "--help"}, &stdout, &stderr); exit != 0 {
+		t.Fatalf("help --help exit = %d, stderr = %s", exit, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Commands:") {
+		t.Fatalf("help --help output = %s", stdout.String())
+	}
+}
+
+func TestCommandSpecificHelpJSON(t *testing.T) {
+	t.Parallel()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if exit := Run([]string{"--json", "update", "--help"}, &stdout, &stderr); exit != 0 {
+		t.Fatalf("update help exit = %d, stderr = %s", exit, stderr.String())
+	}
+	var result helpResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("decode update help: %v", err)
+	}
+	if result.Command != "update" || !strings.Contains(result.Usage, "--if-match ETAG") || len(result.Notes) < 2 {
+		t.Fatalf("help result = %#v", result)
+	}
+}
+
 func TestNewShowListAndSearchJSON(t *testing.T) {
 	t.Parallel()
 
@@ -114,6 +186,60 @@ func TestNewShowListAndSearchJSON(t *testing.T) {
 		}
 		if len(listed) != 1 || listed[0].ID != created.ID {
 			t.Errorf("%v listed %#v", command, listed)
+		}
+	}
+}
+
+func TestShowHumanOutputIncludesTaskMetadata(t *testing.T) {
+	t.Parallel()
+
+	home := filepath.Join(t.TempDir(), "ledger")
+	runCommand(t, nil, "--home", home, "init")
+
+	parentOutput := runCommand(t, nil, "--home", home, "new", "Parent", "--json")
+	var parent task.Summary
+	if err := json.Unmarshal(parentOutput, &parent); err != nil {
+		t.Fatalf("decode parent: %v", err)
+	}
+	blockerOutput := runCommand(t, nil, "--home", home, "new", "Blocker", "--json")
+	var blocker task.Summary
+	if err := json.Unmarshal(blockerOutput, &blocker); err != nil {
+		t.Fatalf("decode blocker: %v", err)
+	}
+
+	createdOutput := runCommand(t, nil,
+		"--home", home,
+		"new", "Visible metadata",
+		"--kind", "feature",
+		"--priority", "high",
+		"--repo", "github.com/customerio/parcel",
+		"--tag", "migration",
+		"--parent", parent.ID,
+		"--blocked-by", blocker.ID,
+		"--json",
+	)
+	var created task.Summary
+	if err := json.Unmarshal(createdOutput, &created); err != nil {
+		t.Fatalf("decode task: %v", err)
+	}
+	runCommand(t, nil, "--home", home, "claim", created.ID, "--agent", "metadata-test")
+
+	shown := string(runCommand(t, nil, "--home", home, "show", created.ID))
+	for _, fragment := range []string{
+		"Visible metadata (active, " + created.ID + ")",
+		"Kind: feature",
+		"Priority: high",
+		"Repositories: github.com/customerio/parcel",
+		"Tags: migration",
+		"Parent: " + parent.ID,
+		"Blocked by: " + blocker.ID,
+		"Claim: metadata-test (expires ",
+		"Created: ",
+		"Updated: ",
+		"# Visible metadata",
+	} {
+		if !strings.Contains(shown, fragment) {
+			t.Fatalf("show output does not contain %q:\n%s", fragment, shown)
 		}
 	}
 }

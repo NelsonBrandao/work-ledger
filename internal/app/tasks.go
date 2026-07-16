@@ -80,8 +80,46 @@ func runShow(paths ledger.Paths, arguments []string, asJSON bool, stdout, stderr
 		return writeError(stderr, asJSON, err)
 	}
 	return writeResult(stdout, asJSON, selected, func() {
-		fmt.Fprintf(stdout, "%s (%s, %s)\n\n%s", selected.Title, selected.Status, selected.ID, selected.Body)
+		writeTaskShow(stdout, selected)
 	})
+}
+
+func writeTaskShow(stdout io.Writer, selected task.Task) {
+	fmt.Fprintf(stdout, "%s (%s, %s)\n", selected.Title, selected.Status, selected.ID)
+	fmt.Fprintf(stdout, "Kind: %s\n", selected.Kind)
+	fmt.Fprintf(stdout, "Priority: %s\n", selected.Priority)
+	fmt.Fprintf(stdout, "Repositories: %s\n", formatRepositoryScopes(selected.Repositories))
+	if len(selected.Tags) > 0 {
+		fmt.Fprintf(stdout, "Tags: %s\n", strings.Join(selected.Tags, ", "))
+	}
+	if selected.Parent != "" {
+		fmt.Fprintf(stdout, "Parent: %s\n", selected.Parent)
+	}
+	if len(selected.BlockedBy) > 0 {
+		fmt.Fprintf(stdout, "Blocked by: %s\n", strings.Join(selected.BlockedBy, ", "))
+	}
+	if selected.Claim != nil {
+		fmt.Fprintf(stdout, "Claim: %s (expires %s)\n", selected.Claim.Agent, selected.Claim.ExpiresAt)
+	}
+	fmt.Fprintf(stdout, "Created: %s\n", selected.CreatedAt)
+	fmt.Fprintf(stdout, "Updated: %s\n\n", selected.UpdatedAt)
+	fmt.Fprint(stdout, selected.Body)
+}
+
+func formatRepositoryScopes(scopes []task.RepositoryScope) string {
+	if len(scopes) == 0 {
+		return "none"
+	}
+
+	formatted := make([]string, 0, len(scopes))
+	for _, scope := range scopes {
+		if len(scope.Paths) == 0 {
+			formatted = append(formatted, scope.ID)
+			continue
+		}
+		formatted = append(formatted, fmt.Sprintf("%s (paths: %s)", scope.ID, strings.Join(scope.Paths, ", ")))
+	}
+	return strings.Join(formatted, "; ")
 }
 
 func runList(paths ledger.Paths, arguments []string, asJSON bool, stdout, stderr io.Writer) int {

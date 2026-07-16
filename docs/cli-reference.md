@@ -11,6 +11,11 @@ given, Work Ledger uses `WORK_LEDGER_HOME`, then `~/work-ledger`. `--json`
 prints structured command results; errors are written to standard error and use
 a non-zero exit status.
 
+Use `work-ledger help <command>` or `work-ledger <command> --help` for a
+complete description of that command's options and behavior. Both forms work
+without an initialized ledger; `--json` returns the command, usage, purpose,
+and detailed notes as structured data.
+
 Commands that change a task accept `--agent NAME`. When it is omitted, Work
 Ledger uses `WORK_LEDGER_AGENT`, then `manual`. Mutation commands also accept
 `--if-match ETAG`, which rejects the change if the task has changed since a
@@ -57,7 +62,9 @@ can be either a Git checkout path or an already-normalized repository ID.
 Repeated flags add multiple repositories, tags, and blockers. A task may have
 no repositories when it is general planning work.
 
-`show` includes the full Markdown body and, in JSON output, the current `etag`.
+`show` renders a metadata header (including repositories, tags, relationships,
+claim, and timestamps) before the full Markdown body. JSON output includes the
+same fields and the current `etag`.
 `list` searches active tasks only; `--all` is the explicit form for an
 unscoped list, `--here` detects the current Git repository, and `--ready`
 returns only unblocked `todo` work. Multiple `--status` or `--tag` values are

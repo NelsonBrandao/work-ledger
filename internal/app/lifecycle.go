@@ -41,6 +41,7 @@ type updateOptions struct {
 }
 
 type primeCommand struct {
+	Name    string   `json:"name"`
 	Syntax  string   `json:"syntax"`
 	Purpose string   `json:"purpose"`
 	Notes   []string `json:"notes,omitempty"`
@@ -63,20 +64,25 @@ var primeProtocol = []string{
 }
 
 var primeCommands = []primeCommand{
-	{Syntax: "work-ledger [--home PATH] [--json] <command>", Purpose: "Global form. `--home` overrides WORK_LEDGER_HOME and the default ~/work-ledger; `--json` produces structured output."},
-	{Syntax: "work-ledger init | doctor | context | prime", Purpose: "Initialize or validate the private ledger, inspect the current Git repository, or print this agent guide."},
-	{Syntax: "work-ledger new <title> [--kind KIND] [--priority PRIORITY] [--repo PATH-OR-ID]... [--tag TAG]... [--parent ID] [--blocked-by ID]...", Purpose: "Create a todo task. Repeated --repo, --tag, and --blocked-by options add multiple values."},
-	{Syntax: "work-ledger show <task-id>", Purpose: "Read one task. JSON output contains its full body and `etag` for guarded mutations."},
-	{Syntax: "work-ledger list [--all | --here | --repo PATH-OR-ID] [--ready] [--status STATUS]... [--tag TAG]... [--parent ID]", Purpose: "List active tasks. `--here` detects the current Git repository; `--ready` returns only unblocked todo tasks."},
-	{Syntax: "work-ledger search <text...>", Purpose: "Case-insensitively search active task metadata and Markdown bodies."},
-	{Syntax: "work-ledger claim <task-id> [--agent NAME] [--lease DURATION] [--if-match ETAG] [--force]", Purpose: "Set the task active and record a two-hour claim by default. Use `--force` only to replace another unexpired claim."},
-	{Syntax: "work-ledger release <task-id> [--agent NAME] [--if-match ETAG] [--force]", Purpose: "Release the caller's claim and return an active task to todo. `--force` is required to release another agent's claim."},
-	{Syntax: "work-ledger note <task-id> [text...] [--agent NAME] [--if-match ETAG]", Purpose: "Add a timestamped Activity entry. Omit text to read it from standard input."},
-	{Syntax: "work-ledger update <task-id> [--agent NAME] [--if-match ETAG] [--title TITLE] [--kind KIND] [--priority PRIORITY] [--status STATUS] [--parent ID | --clear-parent] [--repo PATH-OR-ID]... [--clear-repos] [--tag TAG]... [--clear-tags] [--blocked-by ID]... [--clear-blocked-by]", Purpose: "Change explicit metadata. Providing any --repo, --tag, or --blocked-by replaces that complete list; include all values to keep."},
-	{Syntax: "work-ledger split <parent-id> <title> [--kind KIND] [--priority PRIORITY] [--repo PATH-OR-ID]... [--tag TAG]... [--blocked-by ID]...", Purpose: "Create a child task. Repositories and tags inherit from the parent unless replaced."},
-	{Syntax: "work-ledger close <task-id> <summary> [--agent NAME] [--if-match ETAG] [--force]", Purpose: "Mark done, clear the claim, and add the summary to Activity. `--force` is required when another agent holds the claim."},
-	{Syntax: "work-ledger archive --yes | work-ledger delete <task-id> --yes", Purpose: "Archive every done/cancelled task, or permanently delete an unreferenced task. Both require explicit confirmation."},
-	{Syntax: "work-ledger import beans <directory> [--dry-run] [--repo PATH-OR-ID]...", Purpose: "Import a Beans directory without modifying it. Start with --dry-run; original IDs are retained as legacy_ids."},
+	{Name: "global", Syntax: "work-ledger [--home PATH] [--json] <command>", Purpose: "Global form. `--home` overrides WORK_LEDGER_HOME and the default ~/work-ledger; `--json` produces structured output."},
+	{Name: "init", Syntax: "work-ledger init", Purpose: "Create or validate the private ledger directory.", Notes: []string{"Creates the configuration, task, archive, template, and runtime-lock directories.", "Safe to run again; it validates an existing configuration and never initializes Git."}},
+	{Name: "doctor", Syntax: "work-ledger doctor", Purpose: "Validate ledger configuration and task files.", Notes: []string{"Checks active and archived tasks, IDs, filenames, and parent/blocker references.", "Does not repair or rewrite task files."}},
+	{Name: "context", Syntax: "work-ledger context", Purpose: "Show the current Git repository identity and ledger location.", Notes: []string{"Reads the current checkout's origin remote without contacting the network.", "Reports whether the selected ledger directory is initialized."}},
+	{Name: "new", Syntax: "work-ledger new <title> [--kind KIND] [--priority PRIORITY] [--repo PATH-OR-ID]... [--tag TAG]... [--parent ID] [--blocked-by ID]...", Purpose: "Create a todo task.", Notes: []string{"Repeated --repo, --tag, and --blocked-by options add multiple values.", "Each --repo may be a Git checkout path or a normalized repository ID."}},
+	{Name: "show", Syntax: "work-ledger show <task-id>", Purpose: "Read one task.", Notes: []string{"Human output includes kind, priority, repositories, tags, relationships, claim, and timestamps before the Markdown body.", "JSON output contains the full Markdown body and an etag for guarded mutations. Task IDs imported from Beans may be used through their legacy ID."}},
+	{Name: "list", Syntax: "work-ledger list [--all | --here | --repo PATH-OR-ID] [--ready] [--status STATUS]... [--tag TAG]... [--parent ID]", Purpose: "List active tasks.", Notes: []string{"--here detects the current Git repository; --ready returns only unblocked todo tasks.", "--all cannot be combined with --here or --repo. Repeated --status and --tag values form an OR filter within that field."}},
+	{Name: "search", Syntax: "work-ledger search <text...>", Purpose: "Case-insensitively search active task metadata and Markdown bodies."},
+	{Name: "claim", Syntax: "work-ledger claim <task-id> [--agent NAME] [--lease DURATION] [--if-match ETAG] [--force]", Purpose: "Set the task active and record a time-bound claim.", Notes: []string{"The default lease is two hours; --lease accepts Go durations such as 30m or 4h.", "Use --force only to replace another unexpired claim."}},
+	{Name: "release", Syntax: "work-ledger release <task-id> [--agent NAME] [--if-match ETAG] [--force]", Purpose: "Release a claim and return an active task to todo.", Notes: []string{"By default only the claiming agent may release it.", "--force is required to release another agent's claim."}},
+	{Name: "note", Syntax: "work-ledger note <task-id> [text...] [--agent NAME] [--if-match ETAG]", Purpose: "Append a timestamped Activity entry.", Notes: []string{"Omit text to read the note from standard input."}},
+	{Name: "update", Syntax: "work-ledger update <task-id> [--agent NAME] [--if-match ETAG] [--title TITLE] [--kind KIND] [--priority PRIORITY] [--status STATUS] [--parent ID | --clear-parent] [--repo PATH-OR-ID]... [--clear-repos] [--tag TAG]... [--clear-tags] [--blocked-by ID]... [--clear-blocked-by]", Purpose: "Change explicit task metadata.", Notes: []string{"Supplying any --repo, --tag, or --blocked-by flag replaces that complete list; include every value to keep.", "Use --clear-repos, --clear-tags, or --clear-blocked-by to empty a list explicitly.", "Use the etag from `work-ledger --json show <id>` as --if-match when another agent may edit the task."}},
+	{Name: "split", Syntax: "work-ledger split <parent-id> <title> [--kind KIND] [--priority PRIORITY] [--repo PATH-OR-ID]... [--tag TAG]... [--blocked-by ID]...", Purpose: "Create a child task.", Notes: []string{"Repositories and tags inherit from the parent unless replacements are provided."}},
+	{Name: "close", Syntax: "work-ledger close <task-id> <summary> [--agent NAME] [--if-match ETAG] [--force]", Purpose: "Mark a task done, clear its claim, and record a summary.", Notes: []string{"--force is required when another agent holds the claim."}},
+	{Name: "archive", Syntax: "work-ledger archive --yes", Purpose: "Move every done or cancelled task into archive/<year>/.", Notes: []string{"Requires --yes because it moves task files."}},
+	{Name: "delete", Syntax: "work-ledger delete <task-id> --yes", Purpose: "Permanently remove an unreferenced active task.", Notes: []string{"Requires --yes and refuses to break parent or blocker references, including references from archived tasks."}},
+	{Name: "import", Syntax: "work-ledger import beans <directory> [--dry-run] [--repo PATH-OR-ID]...", Purpose: "Import a Beans directory without modifying it.", Notes: []string{"Start with --dry-run. Original Beans IDs are retained as legacy_ids and relationships are remapped within the import."}},
+	{Name: "prime", Syntax: "work-ledger prime", Purpose: "Print the complete agent operating guide.", Notes: []string{"Includes the required protocol, every command reference, valid metadata values, ledger home, and current repository context when available."}},
+	{Name: "help", Syntax: "work-ledger help [command]", Purpose: "Show general or command-specific usage.", Notes: []string{"`work-ledger <command> --help` and `work-ledger help <command>` are equivalent."}},
 }
 
 var primeValues = map[string][]string{
@@ -611,6 +617,9 @@ func runPrime(paths ledger.Paths, arguments []string, asJSON bool, stdout, stder
 		fmt.Fprintln(stdout, "## Command reference")
 		for _, command := range result.Commands {
 			fmt.Fprintf(stdout, "- `%s`\n  %s\n", command.Syntax, command.Purpose)
+			if len(command.Notes) > 0 {
+				fmt.Fprintf(stdout, "  %s\n", renderCommandNotes(command.Notes))
+			}
 		}
 		fmt.Fprintln(stdout, "")
 		fmt.Fprintln(stdout, "## Valid values")

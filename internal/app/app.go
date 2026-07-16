@@ -32,6 +32,9 @@ Commands:
   delete     Permanently remove a task with --yes.
   import     Import tasks from a Beans directory.
   prime      Print a complete operating guide for coding agents.
+  help       Show general or command-specific usage.
+
+Run work-ledger help <command> or work-ledger <command> --help for details.
 `
 
 type options struct {
@@ -48,9 +51,19 @@ func RunWithInput(arguments []string, stdin io.Reader, stdout, stderr io.Writer)
 	if err != nil {
 		return writeError(stderr, options.json, err)
 	}
-	if command == "" || command == "help" || command == "--help" || command == "-h" {
+	if command == "" || command == "--help" || command == "-h" {
 		_, _ = io.WriteString(stdout, usage)
 		return 0
+	}
+	if command == "help" {
+		if containsHelp(commandArguments) {
+			_, _ = io.WriteString(stdout, usage)
+			return 0
+		}
+		return runHelp(commandArguments, options.json, stdout, stderr)
+	}
+	if containsHelp(commandArguments) {
+		return runHelp([]string{command}, options.json, stdout, stderr)
 	}
 
 	home, err := resolveHome(options.home)
