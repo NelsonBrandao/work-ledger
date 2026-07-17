@@ -34,7 +34,7 @@ Install the released CLI without cloning a working checkout:
 
 ```sh
 go env -w GOPRIVATE=github.com/NelsonBrandao/*
-go install github.com/NelsonBrandao/work-ledger/cmd/work-ledger@v0.1.0
+go install github.com/NelsonBrandao/work-ledger/cmd/work-ledger@v0.4.0
 ```
 
 `GOPRIVATE` tells Go to fetch this private module directly rather than through
@@ -86,6 +86,7 @@ work-ledger --home /private/path/to/ledger list --all
 work-ledger new "Investigate API migration" --repo . --repo ../services
 
 # Inspect it. JSON output includes `etag` for guarded updates.
+work-ledger show wl-01...
 work-ledger --json show wl-01...
 
 # An agent claims the task for two hours by default.
@@ -104,6 +105,12 @@ If an agent reads a task that another process may change, it should pass the
 `etag` returned by `show --json` as `--if-match` to its later mutation. The
 command fails rather than overwriting a newer edit.
 
+When `show` writes to an interactive terminal, it renders the task body as
+Markdown, including syntax-highlighted fenced code blocks. The default
+`--color auto` keeps the original Markdown when its output is piped; use
+`--color always` to force ANSI output or `--color never` for a rendered
+no-color view. `NO_COLOR` disables auto-mode color.
+
 ## Documentation
 
 - [CLI reference](docs/cli-reference.md) — every command, flag, and lifecycle operation.
@@ -114,7 +121,7 @@ command fails rather than overwriting a newer edit.
 
 ## Status and scope
 
-`v0.1.0` is the first usable release. It provides the Markdown ledger, task
-lifecycle, multi-repository discovery, safe local mutation, agent-oriented
-JSON output, and Beans import. Prebuilt release binaries, cross-machine sync,
-and a TUI are intentionally out of scope for this release.
+Work Ledger provides the Markdown ledger, task lifecycle, multi-repository
+discovery, safe local mutation, agent-oriented JSON output, Beans import, and
+rich terminal rendering for task bodies. Prebuilt release binaries,
+cross-machine sync, and a TUI are intentionally out of scope.

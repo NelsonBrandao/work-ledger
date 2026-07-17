@@ -76,6 +76,21 @@ func TestCommandSpecificHelp(t *testing.T) {
 			}
 		}
 	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if exit := Run([]string{"show", "--help"}, &stdout, &stderr); exit != 0 {
+		t.Fatalf("show --help exit = %d, stderr = %s", exit, stderr.String())
+	}
+	for _, fragment := range []string{
+		"Usage: work-ledger show <task-id> [--color auto|always|never]",
+		"preserves raw Markdown when piped",
+		"NO_COLOR disables auto-mode color",
+	} {
+		if !strings.Contains(stdout.String(), fragment) {
+			t.Fatalf("show help does not contain %q:\n%s", fragment, stdout.String())
+		}
+	}
 }
 
 func TestEveryCommandHasHelp(t *testing.T) {
@@ -159,7 +174,7 @@ func TestNewShowListAndSearchJSON(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if exit := Run([]string{"--home", home, "show", created.ID, "--json"}, &stdout, &stderr); exit != 0 {
+	if exit := Run([]string{"--home", home, "show", created.ID, "--color", "always", "--json"}, &stdout, &stderr); exit != 0 {
 		t.Fatalf("show exit = %d, stderr = %s", exit, stderr.String())
 	}
 	var shown task.Task
@@ -241,6 +256,9 @@ func TestShowHumanOutputIncludesTaskMetadata(t *testing.T) {
 		if !strings.Contains(shown, fragment) {
 			t.Fatalf("show output does not contain %q:\n%s", fragment, shown)
 		}
+	}
+	if strings.Contains(shown, "\x1b[") {
+		t.Fatalf("piped show output contains ANSI escapes:\n%s", shown)
 	}
 }
 

@@ -51,7 +51,7 @@ work-ledger new "Title" \
   [--repo PATH-OR-ID]... [--tag TAG]... \
   [--parent TASK-ID] [--blocked-by TASK-ID]...
 
-work-ledger show TASK-ID
+work-ledger show TASK-ID [--color auto|always|never]
 work-ledger list [--all | --here | --repo PATH-OR-ID] \
   [--ready] [--status STATUS]... [--tag TAG]... [--parent TASK-ID]
 work-ledger search TEXT...
@@ -63,8 +63,12 @@ Repeated flags add multiple repositories, tags, and blockers. A task may have
 no repositories when it is general planning work.
 
 `show` renders a metadata header (including repositories, tags, relationships,
-claim, and timestamps) before the full Markdown body. JSON output includes the
-same fields and the current `etag`.
+claim, and timestamps) before the full Markdown body. On an interactive
+terminal, Markdown is rendered with headings, lists, links, tables, and
+syntax-highlighted fenced code blocks. The default `--color auto` preserves
+the raw Markdown body when output is piped; `--color always` forces ANSI output
+and `--color never` renders without ANSI. `NO_COLOR` disables color in auto
+mode. JSON output includes the original Markdown body and the current `etag`.
 `list` searches active tasks only; `--all` is the explicit form for an
 unscoped list, `--here` detects the current Git repository, and `--ready`
 returns only unblocked `todo` work. Multiple `--status` or `--tag` values are

@@ -47,6 +47,10 @@ func Run(arguments []string, stdout, stderr io.Writer) int {
 }
 
 func RunWithInput(arguments []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	return runWithInput(arguments, stdin, stdout, stderr, terminalCapabilitiesFor(stdout))
+}
+
+func runWithInput(arguments []string, stdin io.Reader, stdout, stderr io.Writer, terminal terminalCapabilities) int {
 	options, command, commandArguments, err := parseArguments(arguments)
 	if err != nil {
 		return writeError(stderr, options.json, err)
@@ -91,7 +95,7 @@ func RunWithInput(arguments []string, stdin io.Reader, stdout, stderr io.Writer)
 	case "new":
 		return runNew(paths, commandArguments, options.json, stdout, stderr)
 	case "show":
-		return runShow(paths, commandArguments, options.json, stdout, stderr)
+		return runShow(paths, commandArguments, options.json, terminal, stdout, stderr)
 	case "list":
 		return runList(paths, commandArguments, options.json, stdout, stderr)
 	case "search":

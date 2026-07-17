@@ -33,6 +33,11 @@ type listOptions struct {
 	all        bool
 }
 
+type showOptions struct {
+	taskID string
+	color  colorMode
+}
+
 func runNew(paths ledger.Paths, arguments []string, asJSON bool, stdout, stderr io.Writer) int {
 	options, title, err := parseNewArguments(arguments)
 	if err != nil {
@@ -64,9 +69,10 @@ func runNew(paths ledger.Paths, arguments []string, asJSON bool, stdout, stderr 
 	})
 }
 
-func runShow(paths ledger.Paths, arguments []string, asJSON bool, stdout, stderr io.Writer) int {
-	if len(arguments) != 1 {
-		return writeError(stderr, asJSON, errors.New("usage: work-ledger show <task-id>"))
+func runShow(paths ledger.Paths, arguments []string, asJSON bool, terminal terminalCapabilities, stdout, stderr io.Writer) int {
+	options, err := parseShowArguments(arguments)
+	if err != nil {
+		return writeError(stderr, asJSON, err)
 	}
 	if _, err := ledger.Load(paths); err != nil {
 		return writeError(stderr, asJSON, err)
@@ -75,16 +81,23 @@ func runShow(paths ledger.Paths, arguments []string, asJSON bool, stdout, stderr
 	if err != nil {
 		return writeError(stderr, asJSON, err)
 	}
-	selected, err := task.Find(tasks, arguments[0])
+	selected, err := task.Find(tasks, options.taskID)
 	if err != nil {
 		return writeError(stderr, asJSON, err)
 	}
+	body := selected.Body
+	if !asJSON {
+		body, err = renderTaskMarkdown(selected.Body, options.color, terminal)
+		if err != nil {
+			return writeError(stderr, asJSON, fmt.Errorf("render task Markdown: %w", err))
+		}
+	}
 	return writeResult(stdout, asJSON, selected, func() {
-		writeTaskShow(stdout, selected)
+		writeTaskShow(stdout, selected, body)
 	})
 }
 
-func writeTaskShow(stdout io.Writer, selected task.Task) {
+func writeTaskShow(stdout io.Writer, selected task.Task, body string) {
 	fmt.Fprintf(stdout, "%s (%s, %s)\n", selected.Title, selected.Status, selected.ID)
 	fmt.Fprintf(stdout, "Kind: %s\n", selected.Kind)
 	fmt.Fprintf(stdout, "Priority: %s\n", selected.Priority)
@@ -103,7 +116,7 @@ func writeTaskShow(stdout io.Writer, selected task.Task) {
 	}
 	fmt.Fprintf(stdout, "Created: %s\n", selected.CreatedAt)
 	fmt.Fprintf(stdout, "Updated: %s\n\n", selected.UpdatedAt)
-	fmt.Fprint(stdout, selected.Body)
+	fmt.Fprint(stdout, body)
 }
 
 func formatRepositoryScopes(scopes []task.RepositoryScope) string {
@@ -120,6 +133,35 @@ func formatRepositoryScopes(scopes []task.RepositoryScope) string {
 		formatted = append(formatted, fmt.Sprintf("%s (paths: %s)", scope.ID, strings.Join(scope.Paths, ", ")))
 	}
 	return strings.Join(formatted, "; ")
+}
+
+func parseShowArguments(arguments []string) (showOptions, error) {
+	options := showOptions{color: colorModeAuto}
+	var taskIDs []string
+	for index := 0; index < len(arguments); index++ {
+		switch arguments[index] {
+		case "--color":
+			if index+1 >= len(arguments) {
+				return options, errors.New("--color requires auto, always, or never")
+			}
+			index++
+			color, err := parseColorMode(arguments[index])
+			if err != nil {
+				return options, err
+			}
+			options.color = color
+		default:
+			if strings.HasPrefix(arguments[index], "-") {
+				return options, fmt.Errorf("unknown show option %q", arguments[index])
+			}
+			taskIDs = append(taskIDs, arguments[index])
+		}
+	}
+	if len(taskIDs) != 1 {
+		return options, errors.New("usage: work-ledger show <task-id> [--color auto|always|never]")
+	}
+	options.taskID = taskIDs[0]
+	return options, nil
 }
 
 func runList(paths ledger.Paths, arguments []string, asJSON bool, stdout, stderr io.Writer) int {
