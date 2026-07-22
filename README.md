@@ -34,7 +34,7 @@ Install the released CLI without cloning a working checkout:
 
 ```sh
 go env -w GOPRIVATE=github.com/NelsonBrandao/*
-go install github.com/NelsonBrandao/work-ledger/cmd/work-ledger@v0.4.0
+go install github.com/NelsonBrandao/work-ledger/cmd/work-ledger@v0.5.0
 ```
 
 `GOPRIVATE` tells Go to fetch this private module directly rather than through

@@ -29,7 +29,7 @@ Install the released CLI without cloning a checkout:
 
 ```sh
 go env -w GOPRIVATE=github.com/NelsonBrandao/*
-go install github.com/NelsonBrandao/work-ledger/cmd/work-ledger@v0.4.0
+go install github.com/NelsonBrandao/work-ledger/cmd/work-ledger@v0.5.0
 ```
 
 Ensure `$GOBIN` (or `$(go env GOPATH)/bin` when `GOBIN` is unset) is on your
