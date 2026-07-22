@@ -50,7 +50,7 @@ func DefaultHome(userHome, configuredHome string) (string, error) {
 	if userHome == "" {
 		return "", errors.New("could not determine a home directory; set WORK_LEDGER_HOME or pass --home")
 	}
-	return filepath.Join(userHome, "work-ledger"), nil
+	return filepath.Join(userHome, ".work-ledger"), nil
 }
 
 // Initialize creates a new ledger if it does not exist. It is safe to run more

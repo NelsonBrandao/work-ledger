@@ -6,7 +6,7 @@ write task data into the source repository from which it is invoked.
 ## Directory layout
 
 ```text
-~/work-ledger/
+~/.work-ledger/
   ledger.yaml              # schema version and repository aliases
   tasks/                   # active task Markdown files
   archive/<year>/          # completed or cancelled task files

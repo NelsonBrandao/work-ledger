@@ -33,13 +33,13 @@ The CLI scans task files on demand. This is simple, makes manual edits visible
 immediately, and is fast for the expected hundreds or low thousands of tasks.
 An index can be added later only after profiling proves it necessary.
 
-The default ledger directory is `~/work-ledger`; `WORK_LEDGER_HOME` and a global
+The default ledger directory is `~/.work-ledger`; `WORK_LEDGER_HOME` and a global
 `--home` flag override it. All durable configuration, tasks, archives, and
 runtime lock files live below this directory. `work-ledger init` never changes the
 current source repository.
 
 ```text
-~/work-ledger/
+~/.work-ledger/
   ledger.yaml                 # format version and repository aliases
   tasks/                      # active task Markdown files
   archive/2026/               # closed or cancelled task Markdown files

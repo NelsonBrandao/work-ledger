@@ -14,7 +14,7 @@ focused on team-shared codebase rules.
 Your machine
   ~/.codex/AGENTS.md       Personal instructions for Codex
   ~/.claude/CLAUDE.md      Personal instructions for Claude Code
-  ~/work-ledger/           Private task files, configuration, and locks
+  ~/.work-ledger/          Private task files, configuration, and locks
   work-ledger              CLI available on PATH
 ```
 
@@ -29,7 +29,7 @@ Install the released CLI without cloning a checkout:
 
 ```sh
 go env -w GOPRIVATE=github.com/NelsonBrandao/*
-go install github.com/NelsonBrandao/work-ledger/cmd/work-ledger@v0.1.0
+go install github.com/NelsonBrandao/work-ledger/cmd/work-ledger@v0.4.0
 ```
 
 Ensure `$GOBIN` (or `$(go env GOPATH)/bin` when `GOBIN` is unset) is on your
@@ -40,10 +40,11 @@ work-ledger init
 work-ledger doctor
 ```
 
-The default location is `~/work-ledger`. It is the simplest choice because
-both Codex and Claude Code inherit it without extra configuration. To use a
-different location, set `WORK_LEDGER_HOME` in the environment that launches
-the agent:
+The default location is `~/.work-ledger`. It is the simplest choice because
+both Codex and Claude Code inherit it without extra configuration. Existing
+ledgers are not moved automatically; set `WORK_LEDGER_HOME=~/work-ledger` to
+continue using one at the former default location. To use a different location,
+set `WORK_LEDGER_HOME` in the environment that launches the agent:
 
 ```sh
 export WORK_LEDGER_HOME="$HOME/Library/Application Support/work-ledger"

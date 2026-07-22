@@ -52,8 +52,12 @@ go build -o work-ledger ./cmd/work-ledger
 
 ## Quick start
 
-Initialize the private ledger once. This command creates `~/work-ledger` by
+Initialize the private ledger once. This command creates `~/.work-ledger` by
 default and never changes the repository you run it from.
+
+Existing ledgers are not moved automatically. Continue using one at the former
+default location with `WORK_LEDGER_HOME=~/work-ledger` or
+`--home ~/work-ledger`.
 
 ```sh
 work-ledger init

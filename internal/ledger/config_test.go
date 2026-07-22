@@ -13,7 +13,19 @@ func TestDefaultHome(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DefaultHome returned an error: %v", err)
 	}
-	if want := "/Users/example/work-ledger"; home != want {
+	if want := "/Users/example/.work-ledger"; home != want {
+		t.Errorf("DefaultHome = %q, want %q", home, want)
+	}
+}
+
+func TestDefaultHomeUsesConfiguredLocation(t *testing.T) {
+	t.Parallel()
+
+	home, err := DefaultHome("/Users/example", "/private/tmp/custom-ledger")
+	if err != nil {
+		t.Fatalf("DefaultHome returned an error: %v", err)
+	}
+	if want := "/private/tmp/custom-ledger"; home != want {
 		t.Errorf("DefaultHome = %q, want %q", home, want)
 	}
 }

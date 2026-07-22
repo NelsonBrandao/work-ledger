@@ -7,9 +7,13 @@ work-ledger [--home PATH] [--json] <command> [arguments]
 ```
 
 `--home` selects a private ledger directory for this invocation. If it is not
-given, Work Ledger uses `WORK_LEDGER_HOME`, then `~/work-ledger`. `--json`
+given, Work Ledger uses `WORK_LEDGER_HOME`, then `~/.work-ledger`. `--json`
 prints structured command results; errors are written to standard error and use
 a non-zero exit status.
+
+Existing ledgers are not moved automatically. To keep using one at the former
+default location, set `WORK_LEDGER_HOME=~/work-ledger` or pass
+`--home ~/work-ledger`.
 
 Use `work-ledger help <command>` or `work-ledger <command> --help` for a
 complete description of that command's options and behavior. Both forms work

@@ -64,7 +64,7 @@ var primeProtocol = []string{
 }
 
 var primeCommands = []primeCommand{
-	{Name: "global", Syntax: "work-ledger [--home PATH] [--json] <command>", Purpose: "Global form. `--home` overrides WORK_LEDGER_HOME and the default ~/work-ledger; `--json` produces structured output."},
+	{Name: "global", Syntax: "work-ledger [--home PATH] [--json] <command>", Purpose: "Global form. `--home` overrides WORK_LEDGER_HOME and the default ~/.work-ledger; `--json` produces structured output."},
 	{Name: "init", Syntax: "work-ledger init", Purpose: "Create or validate the private ledger directory.", Notes: []string{"Creates the configuration, task, archive, template, and runtime-lock directories.", "Safe to run again; it validates an existing configuration and never initializes Git."}},
 	{Name: "doctor", Syntax: "work-ledger doctor", Purpose: "Validate ledger configuration and task files.", Notes: []string{"Checks active and archived tasks, IDs, filenames, and parent/blocker references.", "Does not repair or rewrite task files."}},
 	{Name: "context", Syntax: "work-ledger context", Purpose: "Show the current Git repository identity and ledger location.", Notes: []string{"Reads the current checkout's origin remote without contacting the network.", "Reports whether the selected ledger directory is initialized."}},
