@@ -54,6 +54,7 @@ func Beans(paths ledger.Paths, source string, repositories []task.RepositoryScop
 		}
 	}
 
+	taken := task.TakenIDs(existing)
 	createdByLegacyID := make(map[string]task.Task, len(records))
 	result := Result{Imported: len(records)}
 	for _, record := range records {
@@ -68,7 +69,7 @@ func Beans(paths ledger.Paths, source string, repositories []task.RepositoryScop
 		created.Tags = record.Tags
 		created.LegacyIDs = []string{record.ID}
 		created.Body = record.Body
-		created, err = task.Create(paths.Tasks, created)
+		created, err = task.Create(paths.Tasks, created, taken)
 		if err != nil {
 			return Result{}, err
 		}

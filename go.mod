@@ -5,7 +5,6 @@ go 1.22.3
 require (
 	github.com/charmbracelet/glamour v0.8.0
 	github.com/muesli/termenv v0.15.3-0.20240618155329-98d742f6907a
-	github.com/oklog/ulid/v2 v2.1.1
 	golang.org/x/term v0.22.0
 	gopkg.in/yaml.v3 v3.0.1
 )

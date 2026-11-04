@@ -50,17 +50,45 @@ type primeCommand struct {
 type primeResult struct {
 	LedgerHome        string              `json:"ledger_home"`
 	CurrentRepository *repository.Context `json:"current_repository,omitempty"`
-	Protocol          []string            `json:"protocol"`
-	Commands          []primeCommand      `json:"commands"`
-	Values            map[string][]string `json:"values"`
+	Guide             string              `json:"guide"`
+	Commands          []string            `json:"commands"`
 }
 
-var primeProtocol = []string{
-	"Keep all task data in the private ledger. Never create, edit, add, commit, or push ledger task files from a source repository.",
-	"Before new work, inspect work relevant to the checkout with `work-ledger --json list --here --ready` and search for an existing task with `work-ledger --json search <words>`.",
-	"Create one task for new work and name every affected repository with repeated `--repo` options. Claim an existing task before changing code.",
-	"Use a distinct `--agent` name for each agent. Add decisions and investigation results with `note`; use the ETag from `show --json` with `--if-match` for read-modify-write changes.",
-	"When stopping, release the claim. When finished, close the task with a specific summary. Archive completed work later; destructive lifecycle commands require `--yes`.",
+// primeGuide is what an agent reads at the start of a session. Keep it short:
+// details belong in `work-ledger help <command>`.
+const primeGuide = `Work Ledger is a private backlog on this machine. It holds two kinds of work
+that do not belong in the team's issue tracker:
+
+- Breakdowns: a large piece of work split into child tasks, so separate
+  sessions can take them one at a time or in parallel.
+- Finds: something noticed in passing that is worth doing later, such as an
+  odd log line, a latent bug, a refactor, or one piece of a bigger problem.
+
+When to create a task:
+- When you notice a find outside the current request, create it yourself
+  and mention its ID to the user in one line.
+- When work is too large for one session, propose a breakdown, and create the
+  parent and its children once the user agrees.
+- Do not create a task for the request you are working on now, or for work
+  the issue tracker already holds.
+- Search first: ` + "`work-ledger search <words>`" + `.
+
+Working on a task:
+- Claim it before you change code, close it with the outcome when you finish,
+  and release it if you stop without finishing.
+- Keep the description current. Rewrite it when what you know changes, or
+  append a paragraph. Write what the next reader needs; do not keep a log.
+- Task files live in the ledger home. Never copy them into a repository.`
+
+var primeCommandLines = []string{
+	"work-ledger new <title> [--description TEXT|-] [--repo PATH]... [--tag TAG]... [--parent ID] [--kind KIND] [--priority PRIORITY]",
+	"work-ledger split <parent-id> <title> [same options as new]",
+	"work-ledger list [--here] [--ready] [--status STATUS]... [--tag TAG]... [--parent ID]",
+	"work-ledger search <words>",
+	"work-ledger show <id>",
+	"work-ledger edit <id> [--append] [TEXT]   (TEXT from stdin when omitted)",
+	"work-ledger claim <id> | release <id> | close <id> [outcome]",
+	"work-ledger update <id> [--title T] [--status S] [--priority P] [--tag T]... [--parent ID] [--blocked-by ID]...",
 }
 
 var primeCommands = []primeCommand{
@@ -68,24 +96,25 @@ var primeCommands = []primeCommand{
 	{Name: "init", Syntax: "work-ledger init", Purpose: "Create or validate the private ledger directory.", Notes: []string{"Creates the configuration, task, archive, template, and runtime-lock directories.", "Safe to run again; it validates an existing configuration and never initializes Git."}},
 	{Name: "doctor", Syntax: "work-ledger doctor", Purpose: "Validate ledger configuration and task files.", Notes: []string{"Checks active and archived tasks, IDs, filenames, and parent/blocker references.", "Does not repair or rewrite task files."}},
 	{Name: "context", Syntax: "work-ledger context", Purpose: "Show the current Git repository identity and ledger location.", Notes: []string{"Reads the current checkout's origin remote without contacting the network.", "Reports whether the selected ledger directory is initialized."}},
-	{Name: "new", Syntax: "work-ledger new <title> [--kind KIND] [--priority PRIORITY] [--repo PATH-OR-ID]... [--tag TAG]... [--parent ID] [--blocked-by ID]...", Purpose: "Create a todo task.", Notes: []string{"Repeated --repo, --tag, and --blocked-by options add multiple values.", "Each --repo may be a Git checkout path or a normalized repository ID."}},
-	{Name: "show", Syntax: "work-ledger show <task-id> [--color auto|always|never]", Purpose: "Read one task.", Notes: []string{"Human output includes kind, priority, repositories, tags, relationships, claim, and a richly rendered Markdown body with highlighted code fences.", "Color defaults to auto: it renders Markdown only on an interactive terminal and preserves raw Markdown when piped. --color always forces ANSI output; --color never renders without ANSI. NO_COLOR disables auto-mode color.", "JSON output contains the original Markdown body and an etag for guarded mutations. Task IDs imported from Beans may be used through their legacy ID."}},
-	{Name: "list", Syntax: "work-ledger list [--all | --here | --repo PATH-OR-ID] [--ready] [--status STATUS]... [--tag TAG]... [--parent ID]", Purpose: "List active tasks.", Notes: []string{"--here detects the current Git repository; --ready returns only unblocked todo tasks.", "--all cannot be combined with --here or --repo. Repeated --status and --tag values form an OR filter within that field."}},
-	{Name: "search", Syntax: "work-ledger search <text...>", Purpose: "Case-insensitively search active task metadata and Markdown bodies."},
-	{Name: "claim", Syntax: "work-ledger claim <task-id> [--agent NAME] [--lease DURATION] [--if-match ETAG] [--force]", Purpose: "Set the task active and record a time-bound claim.", Notes: []string{"The default lease is two hours; --lease accepts Go durations such as 30m or 4h.", "Use --force only to replace another unexpired claim."}},
-	{Name: "release", Syntax: "work-ledger release <task-id> [--agent NAME] [--if-match ETAG] [--force]", Purpose: "Release a claim and return an active task to todo.", Notes: []string{"By default only the claiming agent may release it.", "--force is required to release another agent's claim."}},
-	{Name: "note", Syntax: "work-ledger note <task-id> [text...] [--agent NAME] [--if-match ETAG]", Purpose: "Append a timestamped Activity entry.", Notes: []string{"Omit text to read the note from standard input."}},
-	{Name: "update", Syntax: "work-ledger update <task-id> [--agent NAME] [--if-match ETAG] [--title TITLE] [--kind KIND] [--priority PRIORITY] [--status STATUS] [--parent ID | --clear-parent] [--repo PATH-OR-ID]... [--clear-repos] [--tag TAG]... [--clear-tags] [--blocked-by ID]... [--clear-blocked-by]", Purpose: "Change explicit task metadata.", Notes: []string{"Supplying any --repo, --tag, or --blocked-by flag replaces that complete list; include every value to keep.", "Use --clear-repos, --clear-tags, or --clear-blocked-by to empty a list explicitly.", "Use the etag from `work-ledger --json show <id>` as --if-match when another agent may edit the task."}},
-	{Name: "split", Syntax: "work-ledger split <parent-id> <title> [--kind KIND] [--priority PRIORITY] [--repo PATH-OR-ID]... [--tag TAG]... [--blocked-by ID]...", Purpose: "Create a child task.", Notes: []string{"Repositories and tags inherit from the parent unless replacements are provided."}},
-	{Name: "close", Syntax: "work-ledger close <task-id> <summary> [--agent NAME] [--if-match ETAG] [--force]", Purpose: "Mark a task done, clear its claim, and record a summary.", Notes: []string{"--force is required when another agent holds the claim."}},
+	{Name: "new", Syntax: "work-ledger new <title> [--description TEXT|-] [--kind KIND] [--priority PRIORITY] [--repo PATH-OR-ID]... [--tag TAG]... [--parent ID] [--blocked-by ID]...", Purpose: "Create a todo task.", Notes: []string{"The ID is the title as a short slug, such as fix-flaky-login-test; a four-character suffix is added only when that ID is taken.", "--description - reads the description from standard input. --title is accepted in place of the positional title.", "Repeated --repo, --tag, and --blocked-by options add multiple values.", "Each --repo may be a Git checkout path or a normalized repository ID.", "kind: " + strings.Join(validValues["kind"], ", ") + "; priority: " + strings.Join(validValues["priority"], ", ") + "."}},
+	{Name: "show", Syntax: "work-ledger show <task-id> [--color auto|always|never]", Purpose: "Read one task.", Notes: []string{"Every command that takes a task ID accepts a unique prefix of it, or a legacy ID.", "Human output includes kind, priority, repositories, tags, relationships, claim, and the rendered Markdown description.", "Color defaults to auto: it renders Markdown only on an interactive terminal and preserves raw Markdown when piped. --color always forces ANSI output; --color never renders without ANSI. NO_COLOR disables auto-mode color.", "JSON output contains the original Markdown body and an etag for guarded mutations."}},
+	{Name: "list", Syntax: "work-ledger list [--all | --here | --repo PATH-OR-ID] [--ready] [--status STATUS]... [--tag TAG]... [--parent ID]", Purpose: "List active tasks.", Notes: []string{"--here detects the current Git repository; --ready returns unblocked todo tasks and stale ones.", "A task is stale when it is active but its claim expired: the session that held it stopped without releasing or closing it.", "--all cannot be combined with --here or --repo. Repeated --status and --tag values form an OR filter within that field."}},
+	{Name: "search", Syntax: "work-ledger search <text...>", Purpose: "Case-insensitively search active task metadata and descriptions."},
+	{Name: "edit", Syntax: "work-ledger edit <task-id> [--append] [text...] [--if-match ETAG]", Purpose: "Rewrite or extend a task's description.", Notes: []string{"Without --append the text replaces the whole description; it gets the title as its heading unless it starts with its own `# ` heading.", "--append adds the text as a new paragraph at the end.", "Omit the text to read it from standard input.", "Pass the etag from `work-ledger --json show <id>` as --if-match to refuse the edit when the task changed since you read it."}},
+	{Name: "note", Syntax: "work-ledger note <task-id> [text...]", Purpose: "Alias for `work-ledger edit <task-id> --append`, kept for older instructions."},
+	{Name: "claim", Syntax: "work-ledger claim <task-id> [--agent NAME] [--lease DURATION] [--if-match ETAG] [--force]", Purpose: "Set the task active and record a time-bound claim.", Notes: []string{"The default lease is two hours; --lease accepts Go durations such as 30m or 4h.", "The agent name defaults to WORK_LEDGER_AGENT, then to the Claude Code or Codex session, then to manual.", "An expired claim can be taken over; --force replaces one that has not expired."}},
+	{Name: "release", Syntax: "work-ledger release <task-id> [--agent NAME] [--if-match ETAG] [--force]", Purpose: "Release a claim and return an active task to todo.", Notes: []string{"Anyone may release an expired claim; --force is required to release another agent's unexpired claim."}},
+	{Name: "update", Syntax: "work-ledger update <task-id> [--agent NAME] [--if-match ETAG] [--title TITLE] [--kind KIND] [--priority PRIORITY] [--status STATUS] [--parent ID | --clear-parent] [--repo PATH-OR-ID]... [--clear-repos] [--tag TAG]... [--clear-tags] [--blocked-by ID]... [--clear-blocked-by]", Purpose: "Change explicit task metadata.", Notes: []string{"Supplying any --repo, --tag, or --blocked-by flag replaces that complete list; include every value to keep.", "Use --clear-repos, --clear-tags, or --clear-blocked-by to empty a list explicitly.", "status: " + strings.Join(validValues["status"], ", ") + ".", "Use the etag from `work-ledger --json show <id>` as --if-match when another agent may edit the task."}},
+	{Name: "split", Syntax: "work-ledger split <parent-id> <title> [--description TEXT|-] [--kind KIND] [--priority PRIORITY] [--repo PATH-OR-ID]... [--tag TAG]... [--blocked-by ID]...", Purpose: "Create a child task.", Notes: []string{"Repositories and tags inherit from the parent unless replacements are provided."}},
+	{Name: "close", Syntax: "work-ledger close <task-id> [outcome] [--agent NAME] [--if-match ETAG] [--force]", Purpose: "Mark a task done, clear its claim, and append the outcome to the description.", Notes: []string{"--force is required when another agent holds an unexpired claim."}},
 	{Name: "archive", Syntax: "work-ledger archive --yes", Purpose: "Move every done or cancelled task into archive/<year>/.", Notes: []string{"Requires --yes because it moves task files."}},
 	{Name: "delete", Syntax: "work-ledger delete <task-id> --yes", Purpose: "Permanently remove an unreferenced active task.", Notes: []string{"Requires --yes and refuses to break parent or blocker references, including references from archived tasks."}},
 	{Name: "import", Syntax: "work-ledger import beans <directory> [--dry-run] [--repo PATH-OR-ID]...", Purpose: "Import a Beans directory without modifying it.", Notes: []string{"Start with --dry-run. Original Beans IDs are retained as legacy_ids and relationships are remapped within the import."}},
-	{Name: "prime", Syntax: "work-ledger prime", Purpose: "Print the complete agent operating guide.", Notes: []string{"Includes the required protocol, every command reference, valid metadata values, ledger home, and current repository context when available."}},
+	{Name: "prime", Syntax: "work-ledger prime", Purpose: "Print the short agent guide: when to create tasks, how to work them, and the common commands.", Notes: []string{"Point an agent's personal instructions at this command; the guide ships with the CLI, so it changes with each release."}},
 	{Name: "help", Syntax: "work-ledger help [command]", Purpose: "Show general or command-specific usage.", Notes: []string{"`work-ledger <command> --help` and `work-ledger help <command>` are equivalent."}},
 }
 
-var primeValues = map[string][]string{
+var validValues = map[string][]string{
 	"kind":     {"task", "bug", "investigation", "feature"},
 	"status":   {"todo", "active", "blocked", "done", "cancelled"},
 	"priority": {"critical", "high", "normal", "low"},
@@ -101,16 +130,12 @@ func runClaim(paths ledger.Paths, arguments []string, asJSON bool, stdout, stder
 	}
 	now := time.Now()
 	updated, err := store.Mutate(paths, options.identifier, options.ifMatch, func(document *task.Document) error {
-		if document.Claim != nil && document.Claim.Agent != options.agent && !options.force {
-			expiresAt, parseErr := time.Parse(time.RFC3339, document.Claim.ExpiresAt)
-			if parseErr == nil && expiresAt.After(now) {
-				return fmt.Errorf("task is claimed by %s until %s", document.Claim.Agent, document.Claim.ExpiresAt)
-			}
+		if err := checkClaim(document, options, now, "claim"); err != nil {
+			return err
 		}
 		expiresAt := now.Add(lease).UTC().Format(time.RFC3339)
 		document.Status = "active"
 		document.SetClaim(&task.Claim{Agent: options.agent, ExpiresAt: expiresAt})
-		document.AppendActivity(now, options.agent, "Claimed task until "+expiresAt)
 		return nil
 	})
 	if err != nil {
@@ -130,17 +155,16 @@ func runRelease(paths ledger.Paths, arguments []string, asJSON bool, stdout, std
 		return writeError(stderr, asJSON, err)
 	}
 	updated, err := store.Mutate(paths, options.identifier, options.ifMatch, func(document *task.Document) error {
-		if document.Claim == nil {
+		if document.Claim == nil && document.Status != "active" {
 			return errors.New("task is not claimed")
 		}
-		if document.Claim.Agent != options.agent && !options.force {
-			return fmt.Errorf("task is claimed by %s; pass --force to release it", document.Claim.Agent)
+		if err := checkClaim(document, options, time.Now(), "release"); err != nil {
+			return err
 		}
 		document.SetClaim(nil)
 		if document.Status == "active" {
 			document.Status = "todo"
 		}
-		document.AppendActivity(time.Now(), options.agent, "Released task claim")
 		return nil
 	})
 	if err != nil {
@@ -151,33 +175,46 @@ func runRelease(paths ledger.Paths, arguments []string, asJSON bool, stdout, std
 	})
 }
 
-func runNote(paths ledger.Paths, arguments []string, stdin io.Reader, asJSON bool, stdout, stderr io.Writer) int {
-	options, message, err := parseNoteArguments(arguments)
+func runEdit(paths ledger.Paths, arguments []string, stdin io.Reader, appendOnly bool, asJSON bool, stdout, stderr io.Writer) int {
+	options, remaining, err := parseMutationWithText("edit", arguments)
 	if err != nil {
 		return writeError(stderr, asJSON, err)
 	}
-	if message == "" {
+	var words []string
+	for _, argument := range remaining {
+		if argument == "--append" {
+			appendOnly = true
+			continue
+		}
+		words = append(words, argument)
+	}
+	text := strings.Join(words, " ")
+	if text == "" || text == "-" {
 		contents, readErr := io.ReadAll(stdin)
 		if readErr != nil {
-			return writeError(stderr, asJSON, fmt.Errorf("read note from stdin: %w", readErr))
+			return writeError(stderr, asJSON, fmt.Errorf("read description from stdin: %w", readErr))
 		}
-		message = strings.TrimSpace(string(contents))
+		text = string(contents)
 	}
-	if message == "" {
-		return writeError(stderr, asJSON, errors.New("note text is required as an argument or stdin"))
+	if strings.TrimSpace(text) == "" {
+		return writeError(stderr, asJSON, errors.New("description text is required as an argument or stdin"))
 	}
 	if _, err := ledger.Load(paths); err != nil {
 		return writeError(stderr, asJSON, err)
 	}
 	updated, err := store.Mutate(paths, options.identifier, options.ifMatch, func(document *task.Document) error {
-		document.AppendActivity(time.Now(), options.agent, message)
+		if appendOnly {
+			document.AppendDescription(text)
+		} else {
+			document.ReplaceDescription(text)
+		}
 		return nil
 	})
 	if err != nil {
 		return writeError(stderr, asJSON, err)
 	}
 	return writeResult(stdout, asJSON, updated, func() {
-		fmt.Fprintf(stdout, "Added a note to %s\n", updated.ID)
+		fmt.Fprintf(stdout, "Updated the description of %s\n", updated.ID)
 	})
 }
 
@@ -194,6 +231,16 @@ func runUpdate(paths ledger.Paths, arguments []string, asJSON bool, stdout, stde
 	if err != nil {
 		return writeError(stderr, asJSON, err)
 	}
+	if options.parent != nil {
+		parentIDs, err := resolveTaskIDs(paths, []string{*options.parent})
+		if err != nil {
+			return writeError(stderr, asJSON, err)
+		}
+		options.parent = &parentIDs[0]
+	}
+	if options.blockedBy, err = resolveTaskIDs(paths, options.blockedBy); err != nil {
+		return writeError(stderr, asJSON, err)
+	}
 	updated, err := store.Mutate(paths, options.identifier, options.ifMatch, func(document *task.Document) error {
 		if options.title != nil {
 			document.RenameTitle(*options.title)
@@ -202,10 +249,10 @@ func runUpdate(paths ledger.Paths, arguments []string, asJSON bool, stdout, stde
 			document.Kind = *options.kind
 		}
 		if options.priority != nil {
-			document.Priority = *options.priority
+			document.Priority = normalizePriority(*options.priority)
 		}
 		if options.status != nil {
-			document.Status = *options.status
+			document.Status = normalizeStatus(*options.status)
 		}
 		if options.clearParent {
 			document.Parent = ""
@@ -221,7 +268,6 @@ func runUpdate(paths ledger.Paths, arguments []string, asJSON bool, stdout, stde
 		if options.replaceRepos {
 			document.Repositories = repositories
 		}
-		document.AppendActivity(time.Now(), options.agent, "Updated task metadata")
 		return nil
 	})
 	if err != nil {
@@ -232,12 +278,12 @@ func runUpdate(paths ledger.Paths, arguments []string, asJSON bool, stdout, stde
 	})
 }
 
-func runSplit(paths ledger.Paths, arguments []string, asJSON bool, stdout, stderr io.Writer) int {
+func runSplit(paths ledger.Paths, arguments []string, stdin io.Reader, asJSON bool, stdout, stderr io.Writer) int {
 	if len(arguments) < 2 {
 		return writeError(stderr, asJSON, errors.New("usage: work-ledger split <parent-id> <title> [options]"))
 	}
 	parentID := arguments[0]
-	options, title, err := parseNewArguments(arguments[1:])
+	options, title, err := parseNewArguments(arguments[1:], stdin)
 	if err != nil {
 		return writeError(stderr, asJSON, err)
 	}
@@ -245,8 +291,15 @@ func runSplit(paths ledger.Paths, arguments []string, asJSON bool, stdout, stder
 	if err != nil {
 		return writeError(stderr, asJSON, err)
 	}
+	allTasks, err := task.LoadAll(paths.Tasks, paths.Archive)
+	if err != nil {
+		return writeError(stderr, asJSON, err)
+	}
 	activeTasks, err := task.LoadAll(paths.Tasks)
 	if err != nil {
+		return writeError(stderr, asJSON, err)
+	}
+	if options.blockedBy, err = findTaskIDs(allTasks, options.blockedBy); err != nil {
 		return writeError(stderr, asJSON, err)
 	}
 	parent, err := task.Find(activeTasks, parentID)
@@ -266,12 +319,13 @@ func runSplit(paths ledger.Paths, arguments []string, asJSON bool, stdout, stder
 	}
 	child.Parent = parent.ID
 	child.BlockedBy = options.blockedBy
+	child.Body = options.description
 	if len(options.tags) == 0 {
 		child.Tags = parent.Tags
 	} else {
 		child.Tags = options.tags
 	}
-	child, err = task.Create(paths.Tasks, child)
+	child, err = task.Create(paths.Tasks, child, task.TakenIDs(allTasks))
 	if err != nil {
 		return writeError(stderr, asJSON, err)
 	}
@@ -289,12 +343,14 @@ func runClose(paths ledger.Paths, arguments []string, asJSON bool, stdout, stder
 		return writeError(stderr, asJSON, err)
 	}
 	updated, err := store.Mutate(paths, options.identifier, options.ifMatch, func(document *task.Document) error {
-		if document.Claim != nil && document.Claim.Agent != options.agent && !options.force {
-			return fmt.Errorf("task is claimed by %s; pass --force to close it", document.Claim.Agent)
+		if err := checkClaim(document, options, time.Now(), "close"); err != nil {
+			return err
 		}
 		document.Status = "done"
 		document.SetClaim(nil)
-		document.AppendActivity(time.Now(), options.agent, "Closed task: "+summary)
+		if summary != "" {
+			document.AppendDescription("**Outcome:** " + summary)
+		}
 		return nil
 	})
 	if err != nil {
@@ -403,21 +459,12 @@ func parseClaimArguments(arguments []string) (mutationOptions, time.Duration, er
 	return options, lease, nil
 }
 
-func parseNoteArguments(arguments []string) (mutationOptions, string, error) {
-	options, remaining, err := parseMutationWithText("note", arguments)
-	return options, strings.Join(remaining, " "), err
-}
-
 func parseCloseArguments(arguments []string) (mutationOptions, string, error) {
 	options, remaining, err := parseMutationWithText("close", arguments)
 	if err != nil {
 		return options, "", err
 	}
-	summary := strings.TrimSpace(strings.Join(remaining, " "))
-	if summary == "" {
-		return options, "", errors.New("usage: work-ledger close <task-id> <summary> [options]")
-	}
-	return options, summary, nil
+	return options, strings.TrimSpace(strings.Join(remaining, " ")), nil
 }
 
 func parseMutationWithText(command string, arguments []string) (mutationOptions, []string, error) {
@@ -436,8 +483,13 @@ func parseMutationWithText(command string, arguments []string) (mutationOptions,
 			} else {
 				options.ifMatch = arguments[index]
 			}
+		case "--append":
+			if command != "edit" {
+				return options, nil, fmt.Errorf("unknown %s option %q", command, argument)
+			}
+			remaining = append(remaining, argument)
 		case "--force":
-			if command == "note" {
+			if command == "edit" {
 				return options, nil, fmt.Errorf("unknown %s option %q", command, argument)
 			}
 			options.force = true
@@ -533,7 +585,77 @@ func agentName(value string) string {
 	if value = os.Getenv("WORK_LEDGER_AGENT"); value != "" {
 		return value
 	}
+	for _, session := range []struct{ prefix, variable string }{
+		{"claude", "CLAUDE_CODE_SESSION_ID"},
+		{"codex", "CODEX_SESSION_ID"},
+	} {
+		if value = os.Getenv(session.variable); value != "" {
+			if len(value) > 8 {
+				value = value[:8]
+			}
+			return session.prefix + "-" + value
+		}
+	}
 	return "manual"
+}
+
+// checkClaim refuses to act on a task another agent holds an unexpired claim
+// on, unless --force was given.
+func checkClaim(document *task.Document, options mutationOptions, now time.Time, command string) error {
+	claim := document.Claim
+	if claim == nil || claim.Agent == options.agent || options.force || !claim.Held(now) {
+		return nil
+	}
+	return fmt.Errorf("task is claimed by %s until %s; pass --force to %s it", claim.Agent, claim.ExpiresAt, command)
+}
+
+func normalizePriority(value string) string {
+	switch strings.ToLower(value) {
+	case "medium", "med", "default":
+		return "normal"
+	case "urgent", "highest":
+		return "critical"
+	case "lowest":
+		return "low"
+	}
+	return value
+}
+
+func normalizeStatus(value string) string {
+	switch strings.ToLower(value) {
+	case "in-progress", "in_progress", "doing", "started":
+		return "active"
+	case "closed", "complete", "completed", "finished":
+		return "done"
+	case "canceled", "dropped", "wontfix":
+		return "cancelled"
+	case "open", "new", "backlog":
+		return "todo"
+	}
+	return value
+}
+
+func resolveTaskIDs(paths ledger.Paths, identifiers []string) ([]string, error) {
+	if len(identifiers) == 0 {
+		return identifiers, nil
+	}
+	tasks, err := task.LoadAll(paths.Tasks, paths.Archive)
+	if err != nil {
+		return nil, err
+	}
+	return findTaskIDs(tasks, identifiers)
+}
+
+func findTaskIDs(tasks []task.Task, identifiers []string) ([]string, error) {
+	resolved := make([]string, 0, len(identifiers))
+	for _, identifier := range identifiers {
+		found, err := task.Find(tasks, identifier)
+		if err != nil {
+			return nil, err
+		}
+		resolved = append(resolved, found.ID)
+	}
+	return resolved, nil
 }
 
 func runImport(paths ledger.Paths, arguments []string, asJSON bool, stdout, stderr io.Writer) int {
@@ -588,9 +710,8 @@ func runPrime(paths ledger.Paths, arguments []string, asJSON bool, stdout, stder
 	}
 	result := primeResult{
 		LedgerHome: paths.Home,
-		Protocol:   primeProtocol,
-		Commands:   primeCommands,
-		Values:     primeValues,
+		Guide:      primeGuide,
+		Commands:   primeCommandLines,
 	}
 	if directory, directoryErr := os.Getwd(); directoryErr == nil {
 		if context, contextErr := repository.Discover(directory); contextErr == nil {
@@ -599,33 +720,18 @@ func runPrime(paths ledger.Paths, arguments []string, asJSON bool, stdout, stder
 		}
 	}
 	return writeResult(stdout, asJSON, result, func() {
-		fmt.Fprintln(stdout, "<IMPORTANT>")
-		fmt.Fprintln(stdout, "# Work Ledger Agent Guide")
+		fmt.Fprintln(stdout, "# Work Ledger")
 		fmt.Fprintln(stdout, "")
-		fmt.Fprintf(stdout, "Private ledger: %s\n", result.LedgerHome)
+		fmt.Fprintln(stdout, result.Guide)
+		fmt.Fprintln(stdout, "")
+		fmt.Fprintln(stdout, "Commands (task IDs accept any unique prefix; `work-ledger help <command>` has details):")
+		for _, line := range result.Commands {
+			fmt.Fprintf(stdout, "  %s\n", line)
+		}
+		fmt.Fprintln(stdout, "")
+		fmt.Fprintf(stdout, "Ledger home: %s\n", result.LedgerHome)
 		if result.CurrentRepository != nil {
 			fmt.Fprintf(stdout, "Current repository: %s\n", result.CurrentRepository.ID)
-		} else {
-			fmt.Fprintln(stdout, "Current repository: unavailable (run `work-ledger context` inside a Git checkout)")
 		}
-		fmt.Fprintln(stdout, "")
-		fmt.Fprintln(stdout, "## Required protocol")
-		for index, instruction := range result.Protocol {
-			fmt.Fprintf(stdout, "%d. %s\n", index+1, instruction)
-		}
-		fmt.Fprintln(stdout, "")
-		fmt.Fprintln(stdout, "## Command reference")
-		for _, command := range result.Commands {
-			fmt.Fprintf(stdout, "- `%s`\n  %s\n", command.Syntax, command.Purpose)
-			if len(command.Notes) > 0 {
-				fmt.Fprintf(stdout, "  %s\n", renderCommandNotes(command.Notes))
-			}
-		}
-		fmt.Fprintln(stdout, "")
-		fmt.Fprintln(stdout, "## Valid values")
-		for _, field := range []string{"kind", "status", "priority"} {
-			fmt.Fprintf(stdout, "- %s: %s\n", field, strings.Join(result.Values[field], ", "))
-		}
-		fmt.Fprintln(stdout, "</IMPORTANT>")
 	})
 }

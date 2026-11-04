@@ -69,22 +69,19 @@ func (document *Document) Save(now time.Time) error {
 	return nil
 }
 
-func (document *Document) AppendActivity(now time.Time, agent, message string) {
-	entry := fmt.Sprintf("- %s — %s: %s\n", now.UTC().Format(time.RFC3339), agent, strings.TrimSpace(message))
-	activity := "## Activity\n"
-	index := strings.Index(document.Body, activity)
-	if index < 0 {
-		if !strings.HasSuffix(document.Body, "\n") {
-			document.Body += "\n"
-		}
-		document.Body += "\n" + activity + "\n" + entry
-		return
+// ReplaceDescription replaces everything below the frontmatter. Text that does
+// not start with its own heading gets the task's title as one.
+func (document *Document) ReplaceDescription(text string) {
+	text = strings.TrimSpace(text)
+	if !strings.HasPrefix(text, "# ") {
+		text = strings.TrimSpace("# " + document.Title + "\n\n" + text)
 	}
-	insertAt := index + len(activity)
-	if insertAt < len(document.Body) && document.Body[insertAt] == '\n' {
-		insertAt++
-	}
-	document.Body = document.Body[:insertAt] + entry + document.Body[insertAt:]
+	document.Body = "\n" + text + "\n"
+}
+
+// AppendDescription adds a paragraph to the end of the description.
+func (document *Document) AppendDescription(text string) {
+	document.Body = strings.TrimRight(document.Body, "\n") + "\n\n" + strings.TrimSpace(text) + "\n"
 }
 
 func (document *Document) RenameTitle(title string) {

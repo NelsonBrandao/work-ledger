@@ -21,14 +21,16 @@ strategy appropriate for your machine.
 
 ## Task files
 
-Each task is one UTF-8 Markdown file. The filename is derived from its ID and
-title, but the frontmatter `id` is the stable identifier used by commands and
-relationships.
+Each task is one UTF-8 Markdown file named `<id>.md`. The ID is a slug of the
+title, given a short random suffix only when it would collide with another
+task. Tasks created before v0.6.0 have `wl-<ulid>` IDs and files named
+`<id>-<title-slug>.md`; both forms stay valid. The frontmatter `id` is the
+stable identifier used by commands and relationships.
 
 ```md
 ---
 schema: work-ledger/task/v1
-id: wl-01j...
+id: move-the-publishing-endpoint
 title: Move the publishing endpoint
 kind: feature
 status: active
@@ -36,8 +38,8 @@ priority: high
 repositories:
   - id: github.com/customerio/parcel
   - id: github.com/customerio/services
-parent: wl-01h...             # optional
-blocked_by: [wl-01g...]       # optional
+parent: server-api-migration  # optional
+blocked_by: [add-ui-api-route] # optional
 tags: [migration]
 claim:
   agent: codex/publish
@@ -48,18 +50,17 @@ updated_at: 2026-07-15T15:00:00Z
 
 # Move the publishing endpoint
 
-## Plan
+The editor still posts to server-api's `/publish`. Move the handler to
+ui_api, then switch the caller.
 
-- [ ] Update the caller.
-
-## Investigation
-
-Record decisions, links, and useful command output here.
-
-## Activity
-
-- 2026-07-15T15:00:00Z — codex/publish: Claimed task until 2026-07-15T17:00:00Z.
+- The caller lives in `app/publish.ts`.
+- **Outcome:** appended by `work-ledger close` when an outcome is given.
 ```
+
+The body below the frontmatter is free-form Markdown: a title heading and a
+description. There is no required structure and no activity log. Agents and
+people rewrite the description in place so it always says what a reader needs
+now.
 
 Valid values are:
 
@@ -76,7 +77,7 @@ current filtering is by repository ID, not by individual path.
 ## Editing safely by hand
 
 Manual editing is a first-class workflow. You can freely edit the Markdown
-body, checklists, plan, investigation, and custom frontmatter fields. Preserve
+body and custom frontmatter fields. Preserve
 the required frontmatter fields (`schema`, `id`, `title`, `kind`, `status`,
 `priority`, `repositories`, `created_at`, and `updated_at`) and keep referenced
 parent and blocker IDs valid.

@@ -98,7 +98,7 @@ func TestEveryCommandHasHelp(t *testing.T) {
 
 	for _, command := range []string{
 		"init", "doctor", "context", "new", "show", "list", "search", "claim",
-		"release", "note", "update", "split", "close", "archive", "delete", "import", "prime",
+		"release", "edit", "note", "update", "split", "close", "archive", "delete", "import", "prime",
 	} {
 		var stdout bytes.Buffer
 		var stderr bytes.Buffer
@@ -284,14 +284,23 @@ func TestLifecycleCommands(t *testing.T) {
 		t.Fatal(err)
 	}
 	runCommand(t, nil, "--home", home, "claim", parent.ID, "--agent", "test-agent", "--json")
-	runCommand(t, strings.NewReader("A note from stdin"), "--home", home, "note", parent.ID, "--agent", "test-agent", "--json")
+	runCommand(t, strings.NewReader("What we know so far."), "--home", home, "edit", parent.ID, "--agent", "test-agent", "--json")
+	runCommand(t, nil, "--home", home, "edit", parent.ID, "--append", "A", "later", "finding.", "--json")
 
 	shownOutput = runCommand(t, nil, "--home", home, "show", parent.ID, "--json")
 	if err := json.Unmarshal(shownOutput, &shown); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(shown.Body, "A note from stdin") {
-		t.Fatalf("note was not stored: %q", shown.Body)
+	if want := "\n# Lifecycle parent\n\nWhat we know so far.\n\nA later finding.\n"; shown.Body != want {
+		t.Fatalf("body = %q, want %q", shown.Body, want)
+	}
+	runCommand(t, strings.NewReader("# Rewritten\n\nOnly this."), "--home", home, "edit", parent.ID, "--json")
+	shownOutput = runCommand(t, nil, "--home", home, "show", parent.ID, "--json")
+	if err := json.Unmarshal(shownOutput, &shown); err != nil {
+		t.Fatal(err)
+	}
+	if want := "\n# Rewritten\n\nOnly this.\n"; shown.Body != want {
+		t.Fatalf("rewritten body = %q, want %q", shown.Body, want)
 	}
 	runCommand(t, nil, "--home", home, "update", parent.ID, "--priority", "high", "--if-match", shown.ETag, "--agent", "test-agent", "--json")
 
@@ -319,11 +328,85 @@ func TestLifecycleCommands(t *testing.T) {
 	if err := json.Unmarshal(prime, &result); err != nil {
 		t.Fatalf("decode prime output: %v", err)
 	}
-	if len(result.Protocol) < 5 || len(result.Commands) < 10 || len(result.Values["status"]) != 5 {
+	if result.Guide == "" || len(result.Commands) < 5 {
 		t.Fatalf("prime result = %#v", result)
 	}
-	if !strings.Contains(result.Commands[0].Syntax, "--home PATH") {
-		t.Fatalf("prime commands = %#v", result.Commands)
+	closed := runCommand(t, nil, "--home", home, "show", parent.ID, "--json")
+	if err := json.Unmarshal(closed, &shown); err != nil {
+		t.Fatal(err)
+	}
+	if shown.Status != "done" || !strings.Contains(shown.Body, "**Outcome:** Lifecycle verified") || strings.Contains(shown.Body, "## Activity") {
+		t.Fatalf("closed task = %#v", shown)
+	}
+}
+
+func TestExpiredClaimCanBeTakenOver(t *testing.T) {
+	t.Parallel()
+
+	home := filepath.Join(t.TempDir(), "ledger")
+	runCommand(t, nil, "--home", home, "init")
+	runCommand(t, nil, "--home", home, "new", "Shared work", "--json")
+	runCommand(t, nil, "--home", home, "claim", "shared", "--agent", "first", "--lease", "1ns")
+
+	listed := runCommand(t, nil, "--home", home, "list", "--ready", "--json")
+	var summaries []task.Summary
+	if err := json.Unmarshal(listed, &summaries); err != nil {
+		t.Fatal(err)
+	}
+	if len(summaries) != 1 || !summaries[0].Stale {
+		t.Fatalf("ready = %#v, want one stale task", summaries)
+	}
+	runCommand(t, nil, "--home", home, "claim", "shared", "--agent", "second")
+
+	var stdout, stderr bytes.Buffer
+	if exit := Run([]string{"--home", home, "release", "shared", "--agent", "first"}, &stdout, &stderr); exit != 1 {
+		t.Fatalf("release of a held claim exit = %d, want 1", exit)
+	}
+	runCommand(t, nil, "--home", home, "close", "shared", "--agent", "second")
+}
+
+func TestAliasesAndPrefixReferences(t *testing.T) {
+	t.Parallel()
+
+	home := filepath.Join(t.TempDir(), "ledger")
+	runCommand(t, nil, "--home", home, "init")
+	runCommand(t, nil, "--home", home, "create", "--title", "Server API migration", "--priority", "medium")
+	runCommand(t, strings.NewReader("Port one endpoint."), "--home", home, "new", "Port snippets endpoint", "--parent", "server-api", "--description", "-")
+
+	shown := runCommand(t, nil, "--home", home, "show", "port-snippets", "--json")
+	var child task.Task
+	if err := json.Unmarshal(shown, &child); err != nil {
+		t.Fatal(err)
+	}
+	if child.Parent != "server-api-migration" || !strings.Contains(child.Body, "Port one endpoint.") {
+		t.Fatalf("child = %#v", child)
+	}
+	runCommand(t, nil, "--home", home, "update", "port-snippets", "--status", "in-progress")
+	shown = runCommand(t, nil, "--home", home, "show", "server-api", "--json")
+	var parent task.Task
+	if err := json.Unmarshal(shown, &parent); err != nil {
+		t.Fatal(err)
+	}
+	if parent.Priority != "normal" {
+		t.Fatalf("priority = %q, want normal", parent.Priority)
+	}
+}
+
+func TestSearchFallsBackToSeparateWords(t *testing.T) {
+	t.Parallel()
+
+	home := filepath.Join(t.TempDir(), "ledger")
+	runCommand(t, nil, "--home", home, "init")
+	runCommand(t, nil, "--home", home, "new", "Render warmer revival")
+	runCommand(t, nil, "--home", home, "new", "Unrelated render bug")
+
+	found := runCommand(t, nil, "--home", home, "search", "warmer", "render", "--json")
+	var summaries []task.Summary
+	if err := json.Unmarshal(found, &summaries); err != nil {
+		t.Fatal(err)
+	}
+	if len(summaries) != 2 || summaries[0].ID != "render-warmer-revival" {
+		t.Fatalf("search = %#v", summaries)
 	}
 }
 
@@ -334,12 +417,12 @@ func TestPrimeHumanOutputIsSelfContained(t *testing.T) {
 	runCommand(t, nil, "--home", home, "init")
 	prime := runCommand(t, nil, "--home", home, "prime")
 	for _, fragment := range []string{
-		"# Work Ledger Agent Guide",
-		"## Required protocol",
+		"# Work Ledger",
+		"Breakdowns:",
+		"Finds:",
 		"work-ledger new <title>",
-		"work-ledger update <task-id>",
-		"work-ledger import beans <directory>",
-		"priority: critical, high, normal, low",
+		"work-ledger edit <id>",
+		"Ledger home: " + home,
 	} {
 		if !bytes.Contains(prime, []byte(fragment)) {
 			t.Fatalf("prime does not contain %q:\n%s", fragment, prime)
@@ -347,7 +430,7 @@ func TestPrimeHumanOutputIsSelfContained(t *testing.T) {
 	}
 }
 
-func TestNoteRejectsForce(t *testing.T) {
+func TestEditRejectsForce(t *testing.T) {
 	t.Parallel()
 
 	home := filepath.Join(t.TempDir(), "ledger")
@@ -360,11 +443,11 @@ func TestNoteRejectsForce(t *testing.T) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	if exit := Run([]string{"--home", home, "note", created.ID, "--force"}, &stdout, &stderr); exit != 1 {
-		t.Fatalf("note --force exit = %d, want 1", exit)
+	if exit := Run([]string{"--home", home, "edit", created.ID, "--force"}, &stdout, &stderr); exit != 1 {
+		t.Fatalf("edit --force exit = %d, want 1", exit)
 	}
-	if !strings.Contains(stderr.String(), "unknown note option") {
-		t.Fatalf("note --force error = %q", stderr.String())
+	if !strings.Contains(stderr.String(), "unknown edit option") {
+		t.Fatalf("edit --force error = %q", stderr.String())
 	}
 }
 
