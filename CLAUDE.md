@@ -28,7 +28,6 @@ outside a checkout.
 - `internal/store/`: guarded mutations, archive/delete operations, and task
   reference checks.
 - `internal/repository/`: Git-origin discovery and normalized repository IDs.
-- `internal/importer/`: Beans migration.
 - `internal/lock/`: short-lived advisory file locks for mutations.
 - `docs/`: CLI reference, ledger format, setup, and release process.
 
@@ -71,8 +70,6 @@ configuration; `go vet` is the static check.
   ID. Older `wl-<ulid>` IDs and `<id>-<slug>.md` filenames must keep working.
 - Treat `--json` output, task frontmatter, task IDs, and normalized repository
   IDs as durable interfaces. Add validation and tests for any format change.
-  The Tower extension (`tower-work-ledger`) reads `list --json`, including
-  `path` and `stale`.
 - `work-ledger prime` is the agent's whole setup: personal instructions only
   point at it, so changing its guide changes every agent's behavior on
   upgrade. Keep it short (about 2KB) and neutral about which issue tracker
@@ -81,9 +78,6 @@ configuration; `go vet` is the static check.
   silently overwrite a task that changed after it was read.
 - Repository-aware operations use normalized Git `origin` remotes and aliases
   from `ledger.yaml`; do not assume a checkout path is a stable identifier.
-- The Beans importer applies repository scopes only from explicit `--repo`
-  values. Preserve that documented behavior unless changing the importer and
-  its tests intentionally.
 - When adding or changing a command, update the command handler, `--help`,
   `work-ledger prime`, JSON behavior, tests, and `docs/cli-reference.md`.
 

@@ -36,13 +36,13 @@ kind: feature
 status: active
 priority: high
 repositories:
-  - id: github.com/customerio/parcel
-  - id: github.com/customerio/services
+  - id: github.com/acme/web
+  - id: github.com/acme/api
 parent: server-api-migration  # optional
 blocked_by: [add-ui-api-route] # optional
 tags: [migration]
 claim:
-  agent: codex/publish
+  agent: codex-publish
   expires_at: 2026-07-15T17:00:00Z
 created_at: 2026-07-15T13:00:00Z
 updated_at: 2026-07-15T15:00:00Z
@@ -71,7 +71,8 @@ Valid values are:
 | `priority` | `critical`, `high`, `normal`, `low` |
 
 `repositories`, `parent`, `blocked_by`, `tags`, `claim`, and `legacy_ids` are
-optional. A repository can also contain a `paths` list for human context;
+optional. `legacy_ids` lists other IDs a task answers to, such as the ID it had
+in a tracker it was moved from; every command accepts them. A repository can also contain a `paths` list for human context;
 current filtering is by repository ID, not by individual path.
 
 ## Editing safely by hand
@@ -92,7 +93,7 @@ workflow instead.
 
 `context` and `list --here` read the current checkout's `origin` remote and
 normalize SSH and HTTPS forms to an ID such as
-`github.com/customerio/parcel`. This happens locally and does not contact the
+`github.com/acme/web`. This happens locally and does not contact the
 remote service.
 
 Use `ledger.yaml` to make a fork or unusual remote resolve to the canonical
@@ -101,8 +102,8 @@ repository ID used by tasks:
 ```yaml
 schema: work-ledger/config/v1
 repository_aliases:
-  github.com/customerio/parcel:
-    - github.com/NelsonBrandao/parcel
+  github.com/acme/web:
+    - github.com/your-user/web
 ```
 
 ## Concurrency and recovery

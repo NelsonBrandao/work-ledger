@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/NelsonBrandao/work-ledger/internal/importer"
 	"github.com/NelsonBrandao/work-ledger/internal/ledger"
 	"github.com/NelsonBrandao/work-ledger/internal/repository"
 	"github.com/NelsonBrandao/work-ledger/internal/store"
@@ -109,7 +108,6 @@ var primeCommands = []primeCommand{
 	{Name: "close", Syntax: "work-ledger close <task-id> [outcome] [--agent NAME] [--if-match ETAG] [--force]", Purpose: "Mark a task done, clear its claim, and append the outcome to the description.", Notes: []string{"--force is required when another agent holds an unexpired claim."}},
 	{Name: "archive", Syntax: "work-ledger archive --yes", Purpose: "Move every done or cancelled task into archive/<year>/.", Notes: []string{"Requires --yes because it moves task files."}},
 	{Name: "delete", Syntax: "work-ledger delete <task-id> --yes", Purpose: "Permanently remove an unreferenced active task.", Notes: []string{"Requires --yes and refuses to break parent or blocker references, including references from archived tasks."}},
-	{Name: "import", Syntax: "work-ledger import beans <directory> [--dry-run] [--repo PATH-OR-ID]...", Purpose: "Import a Beans directory without modifying it.", Notes: []string{"Start with --dry-run. Original Beans IDs are retained as legacy_ids and relationships are remapped within the import."}},
 	{Name: "prime", Syntax: "work-ledger prime", Purpose: "Print the short agent guide: when to create tasks, how to work them, and the common commands.", Notes: []string{"Point an agent's personal instructions at this command; the guide ships with the CLI, so it changes with each release."}},
 	{Name: "help", Syntax: "work-ledger help [command]", Purpose: "Show general or command-specific usage.", Notes: []string{"`work-ledger <command> --help` and `work-ledger help <command>` are equivalent."}},
 }
@@ -656,48 +654,6 @@ func findTaskIDs(tasks []task.Task, identifiers []string) ([]string, error) {
 		resolved = append(resolved, found.ID)
 	}
 	return resolved, nil
-}
-
-func runImport(paths ledger.Paths, arguments []string, asJSON bool, stdout, stderr io.Writer) int {
-	if len(arguments) < 2 || arguments[0] != "beans" {
-		return writeError(stderr, asJSON, errors.New("usage: work-ledger import beans <directory> [--dry-run] [--repo <path-or-id>]..."))
-	}
-	source := arguments[1]
-	var repositories []string
-	dryRun := false
-	for index := 2; index < len(arguments); index++ {
-		switch arguments[index] {
-		case "--dry-run":
-			dryRun = true
-		case "--repo":
-			if index+1 >= len(arguments) {
-				return writeError(stderr, asJSON, errors.New("--repo requires a value"))
-			}
-			index++
-			repositories = append(repositories, arguments[index])
-		default:
-			return writeError(stderr, asJSON, fmt.Errorf("unknown import option %q", arguments[index]))
-		}
-	}
-	config, err := ledger.Load(paths)
-	if err != nil {
-		return writeError(stderr, asJSON, err)
-	}
-	scopes, err := resolveRepositoryScopes(repositories, config)
-	if err != nil {
-		return writeError(stderr, asJSON, err)
-	}
-	result, err := importer.Beans(paths, source, scopes, dryRun)
-	if err != nil {
-		return writeError(stderr, asJSON, err)
-	}
-	return writeResult(stdout, asJSON, result, func() {
-		if result.DryRun {
-			fmt.Fprintf(stdout, "Dry run: would import %d task(s)\n", result.Imported)
-			return
-		}
-		fmt.Fprintf(stdout, "Imported %d task(s)\n", result.Imported)
-	})
 }
 
 func runPrime(paths ledger.Paths, arguments []string, asJSON bool, stdout, stderr io.Writer) int {

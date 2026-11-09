@@ -28,8 +28,7 @@ it needs the binary and the private ledger directory in its own environment.
 Install the released CLI without cloning a checkout:
 
 ```sh
-go env -w GOPRIVATE=github.com/NelsonBrandao/*
-go install github.com/NelsonBrandao/work-ledger/cmd/work-ledger@v0.5.0
+go install github.com/NelsonBrandao/work-ledger/cmd/work-ledger@v0.6.0
 ```
 
 Ensure `$GOBIN` (or `$(go env GOPATH)/bin` when `GOBIN` is unset) is on your
@@ -41,10 +40,9 @@ work-ledger doctor
 ```
 
 The default location is `~/.work-ledger`. It is the simplest choice because
-both Codex and Claude Code inherit it without extra configuration. Existing
-ledgers are not moved automatically; set `WORK_LEDGER_HOME=~/work-ledger` to
-continue using one at the former default location. To use a different location,
-set `WORK_LEDGER_HOME` in the environment that launches the agent:
+both Codex and Claude Code inherit it without extra configuration. To use a
+different location, set `WORK_LEDGER_HOME` in the environment that launches the
+agent:
 
 ```sh
 export WORK_LEDGER_HOME="$HOME/Library/Application Support/work-ledger"
@@ -151,7 +149,7 @@ Close or delete this test task once the setup is confirmed.
 Create one task with all repositories it changes:
 
 ```sh
-work-ledger new "Move API endpoint" --repo ~/code/parcel --repo ~/code/services
+work-ledger new "Move API endpoint" --repo ~/code/web --repo ~/code/api
 ```
 
 The CLI identifies checkouts from their normalized `origin` remotes. Use

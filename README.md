@@ -1,135 +1,133 @@
 # work-ledger
 
-`work-ledger` is a private, local-first work tracker for people and coding
-agents. It stores one editable Markdown file per task in a central folder on
-your machine—not in the repositories the task affects and not in a hosted
-service.
+[![CI](https://github.com/NelsonBrandao/work-ledger/actions/workflows/ci.yml/badge.svg)](https://github.com/NelsonBrandao/work-ledger/actions/workflows/ci.yml)
 
-A task can belong to several repositories at once. That makes it useful for
-work that crosses services, applications, and worktrees, while keeping private
-breakdowns and findings out of Git and out of the team's issue tracker.
+A private backlog for you and your coding agents. Work Ledger keeps one
+Markdown file per task in a folder on your machine (`~/.work-ledger`), outside
+your repositories and outside any hosted service.
 
-## What it provides
+It is built for two kinds of work that do not belong in your team's issue
+tracker:
 
-- Human-editable Markdown tasks with structured YAML frontmatter.
-- One private ledger shared by all local repositories and worktrees.
-- Repository-aware task lookup through normalized Git `origin` remotes.
-- Multi-repository tasks, tags, parent/child tasks, and blockers.
-- Readable IDs derived from the title, such as `move-api-endpoint`, usable by any unique prefix.
-- Agent claims that expire, short-lived mutation locks, and ETag-based conflict checks.
-- JSON output for agent automation, plus a migration path from Beans.
+- **Breakdowns.** A large piece of work split into child tasks, so several
+  agent sessions can pick them up one at a time or in parallel.
+- **Finds.** Something you or an agent noticed in passing and want to come
+  back to: an odd log line, a latent bug, a refactor, one piece of a bigger
+  problem.
 
-Work Ledger is deliberately single-machine in `v0.1.0`. It does not sync data,
-create a Git repository for the ledger, or send ledger contents over the
-network. Back up the ledger using your normal private backup solution.
-
-## Requirements
-
-- Go 1.22.3 or later to install from source.
-- Git when using repository-aware commands such as `context` and `list --here`.
-- Access to this private GitHub repository when installing with `go install`.
+Agents create finds on their own and tell you in one line. You read and edit
+the same files in any editor.
 
 ## Install
 
-Install the released CLI without cloning a working checkout:
+Requires Go 1.22.3 or later.
 
 ```sh
-go env -w GOPRIVATE=github.com/NelsonBrandao/*
-go install github.com/NelsonBrandao/work-ledger/cmd/work-ledger@v0.5.0
-```
-
-`GOPRIVATE` tells Go to fetch this private module directly rather than through
-the public module proxy and checksum database. GitHub authentication must
-already work for your account (through SSH, a credential manager, or a token).
-The resulting binary is installed to `$GOBIN`, or `$(go env GOPATH)/bin` when
-`GOBIN` is unset; ensure that directory is on your `PATH`.
-
-For development from a checkout:
-
-```sh
-go build -o work-ledger ./cmd/work-ledger
-./work-ledger help
-```
-
-## Quick start
-
-Initialize the private ledger once. This command creates `~/.work-ledger` by
-default and never changes the repository you run it from.
-
-Existing ledgers are not moved automatically. Continue using one at the former
-default location with `WORK_LEDGER_HOME=~/work-ledger` or
-`--home ~/work-ledger`.
-
-```sh
+go install github.com/NelsonBrandao/work-ledger/cmd/work-ledger@v0.6.0
 work-ledger init
-work-ledger doctor
 ```
 
-Create one task that touches multiple repositories, then find it from either
-checkout:
+`go install` puts the binary in `$GOBIN`, or `$(go env GOPATH)/bin` when
+`GOBIN` is unset; make sure that directory is on your `PATH`. `init` creates
+`~/.work-ledger`. Set `WORK_LEDGER_HOME` to keep the ledger somewhere else.
 
-```sh
-cd ~/code/parcel
-work-ledger new "Move the publishing endpoint" --repo . --repo ../services --tag migration
-work-ledger list --here --ready
-work-ledger context
+## Set up your agent
+
+Add one line to your personal agent instructions: `~/.claude/CLAUDE.md` for
+Claude Code, `~/.codex/AGENTS.md` for Codex.
+
+```md
+## Work Ledger
+
+Run `work-ledger prime` at the start of each session and follow it.
 ```
 
-Use another private location by setting `WORK_LEDGER_HOME` or passing the
-global `--home` option:
+`prime` prints a short guide (about 2KB) that ships with the CLI: what belongs
+in the ledger, when an agent should create a task, and the commands to use.
+Upgrading `work-ledger` updates what every agent reads. See
+[Agent setup](docs/agent-setup.md) for details and how to check it worked.
 
-```sh
-export WORK_LEDGER_HOME="$HOME/Library/Application Support/work-ledger"
-work-ledger init
-work-ledger --home /private/path/to/ledger list --all
-```
-
-## A typical task workflow
+## Use it yourself
 
 ```sh
 # Create a task. Its ID is the title as a slug: investigate-api-migration.
-work-ledger new "Investigate API migration" --repo . --repo ../services \
-  --description "Callers still hit server-api for snippets."
+work-ledger new "Investigate API migration" --repo . --repo ../api \
+  --description "Callers still hit the old service for snippets."
 
 # Any unique prefix of an ID works.
 work-ledger show investigate-api
 
-# Claim it for two hours (the default lease).
-work-ledger claim investigate-api
+# See what is ready to pick up in the current repository.
+work-ledger list --here --ready
 
-# Keep the description current: rewrite it from stdin, or append a paragraph.
-work-ledger edit investigate-api < notes.md
-work-ledger edit investigate-api --append "Confirmed the caller boundary."
-
-# Split it into pieces other sessions can pick up.
+# Split it into pieces other sessions can take.
 work-ledger split investigate-api "Port the snippets endpoint"
 
-# Finish, or release the claim for someone else.
+# Claim, keep the description current, and close with the outcome.
+work-ledger claim investigate-api
+work-ledger edit investigate-api --append "Confirmed the caller boundary."
 work-ledger close investigate-api "Moved the endpoint and verified both callers"
-work-ledger archive --yes
 ```
 
-If an agent reads a task that another process may change, it can pass the
-`etag` returned by `show --json` as `--if-match` to its later mutation. The
-command then fails rather than overwriting a newer edit.
+A task file looks like this:
 
-When `show` writes to an interactive terminal, it renders the task body as
-Markdown, including syntax-highlighted fenced code blocks. The default
-`--color auto` keeps the original Markdown when its output is piped; use
-`--color always` to force ANSI output or `--color never` for a rendered
-no-color view. `NO_COLOR` disables auto-mode color.
+```md
+---
+schema: work-ledger/task/v1
+id: investigate-api-migration
+title: Investigate API migration
+kind: task
+status: todo
+priority: normal
+repositories:
+    - id: github.com/acme/web
+    - id: github.com/acme/api
+created_at: "2026-11-09T10:00:00Z"
+updated_at: "2026-11-09T10:00:00Z"
+---
+
+# Investigate API migration
+
+Callers still hit the old service for snippets.
+```
+
+## How it works
+
+- **One ledger for every checkout.** A task can name several repositories.
+  `list --here` finds tasks for the repository you are in by its normalized
+  Git `origin`, so it works the same from any clone or worktree.
+- **Readable IDs.** New IDs come from the title. A short random suffix is
+  added only when the ID is taken, and every command accepts a unique prefix.
+- **Free-form descriptions.** There is no required template and no activity
+  log. Agents rewrite the description so it says what the next reader needs.
+- **Claims that expire.** `claim` gives a session a two-hour lease by default.
+  When a session ends without releasing it, the task shows as `stale` in
+  `list --ready` and any agent can take it over.
+- **Safe concurrent edits.** Every change takes a short per-task lock and
+  replaces the file atomically. `--if-match` with the `etag` from
+  `show --json` refuses a change when the task was edited since you read it.
+- **Agent-friendly output.** Every command takes `--json`.
+
+Work Ledger runs on one machine. It does not sync, start a server, or send
+ledger contents anywhere. Back up `~/.work-ledger` the way you back up other
+private files.
 
 ## Documentation
 
-- [CLI reference](docs/cli-reference.md) — every command, flag, and lifecycle operation.
-- [Ledger format](docs/ledger-format.md) — directory layout, task schema, manual editing, aliases, and concurrency.
-- [Agent setup](docs/agent-setup.md) — using Work Ledger from personal Codex or Claude Code instructions.
-- [Release process](docs/releasing.md) — maintainer checklist for future tagged releases.
-- [Implementation plan](docs/implementation-plan.md) — original product and technical design record.
+- [CLI reference](docs/cli-reference.md): every command and flag.
+- [Ledger format](docs/ledger-format.md): task files, manual editing, repository aliases, and concurrency.
+- [Agent setup](docs/agent-setup.md): Claude Code and Codex configuration.
+- [Releasing](docs/releasing.md): maintainer checklist.
 
-## Status and scope
+## Development
 
-Work Ledger provides the Markdown ledger, task lifecycle, multi-repository
-discovery, safe local mutation, agent-oriented JSON output, Beans import, and
-rich terminal rendering for task bodies. Prebuilt release binaries,
-cross-machine sync, and a TUI are intentionally out of scope.
+```sh
+go test ./...
+go vet ./...
+go test -race ./...
+go build ./cmd/work-ledger
+```
+
+## License
+
+[Apache License 2.0](LICENSE)

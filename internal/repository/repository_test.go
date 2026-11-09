@@ -34,9 +34,9 @@ func TestResolveAlias(t *testing.T) {
 	t.Parallel()
 
 	aliases := map[string][]string{
-		"github.com/customerio/parcel": {"github.com/NelsonBrandao/parcel"},
+		"github.com/acme/web": {"github.com/your-user/web"},
 	}
-	if got := ResolveAlias("github.com/NelsonBrandao/parcel", aliases); got != "github.com/customerio/parcel" {
+	if got := ResolveAlias("github.com/your-user/web", aliases); got != "github.com/acme/web" {
 		t.Errorf("ResolveAlias = %q", got)
 	}
 }

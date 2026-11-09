@@ -16,7 +16,7 @@ kind: task
 status: todo
 priority: normal
 repositories:
-  - id: github.com/customerio/parcel
+  - id: github.com/acme/web
 created_at: 2026-07-15T13:00:00Z
 updated_at: 2026-07-15T13:00:00Z
 ---
@@ -34,7 +34,7 @@ func TestParse(t *testing.T) {
 	if task.ID != "wl-01J" {
 		t.Errorf("ID = %q, want wl-01J", task.ID)
 	}
-	if task.Repositories[0].ID != "github.com/customerio/parcel" {
+	if task.Repositories[0].ID != "github.com/acme/web" {
 		t.Errorf("repository = %q", task.Repositories[0].ID)
 	}
 }
@@ -58,17 +58,17 @@ func TestParseRequiresFrontmatter(t *testing.T) {
 func TestNewCreateAndLoad(t *testing.T) {
 	t.Parallel()
 
-	created, err := New("Plan Parcel & Services", "", "", []RepositoryScope{
-		{ID: "github.com/customerio/parcel"},
-		{ID: "github.com/customerio/services"},
+	created, err := New("Plan Web & API", "", "", []RepositoryScope{
+		{ID: "github.com/acme/web"},
+		{ID: "github.com/acme/api"},
 	}, time.Date(2026, time.July, 15, 14, 0, 0, 0, time.UTC))
 	if err != nil {
 		t.Fatalf("New returned an error: %v", err)
 	}
-	if created.ID != "plan-parcel-services" {
-		t.Errorf("ID = %q, want plan-parcel-services", created.ID)
+	if created.ID != "plan-web-api" {
+		t.Errorf("ID = %q, want plan-web-api", created.ID)
 	}
-	if got := FileName(created); got != "plan-parcel-services.md" {
+	if got := FileName(created); got != "plan-web-api.md" {
 		t.Errorf("FileName = %q", got)
 	}
 
@@ -92,7 +92,7 @@ func TestNewCreateAndLoad(t *testing.T) {
 	if loaded.Title != created.Title {
 		t.Errorf("loaded title = %q, want %q", loaded.Title, created.Title)
 	}
-	if strings.TrimSpace(loaded.Body) != "# Plan Parcel & Services" {
+	if strings.TrimSpace(loaded.Body) != "# Plan Web & API" {
 		t.Errorf("created body = %q, want only the title heading", loaded.Body)
 	}
 }
@@ -150,12 +150,12 @@ func TestFindAcceptsUniquePrefix(t *testing.T) {
 	tasks := []Task{
 		{ID: "fix-login-redirect"},
 		{ID: "fix-login-timeout"},
-		{ID: "wl-01kp6s06y88hjrre72pfw9chn6", LegacyIDs: []string{"parcel-4r6q"}},
+		{ID: "wl-01kp6s06y88hjrre72pfw9chn6", LegacyIDs: []string{"proj-4r6q"}},
 	}
 	for _, testCase := range []struct{ identifier, want, wantErr string }{
 		{identifier: "fix-login-t", want: "fix-login-timeout"},
 		{identifier: "fix-login-redirect", want: "fix-login-redirect"},
-		{identifier: "parcel-4r6q", want: "wl-01kp6s06y88hjrre72pfw9chn6"},
+		{identifier: "proj-4r6q", want: "wl-01kp6s06y88hjrre72pfw9chn6"},
 		{identifier: "wl-01kp6", want: "wl-01kp6s06y88hjrre72pfw9chn6"},
 		{identifier: "fix-login", wantErr: "ambiguous"},
 		{identifier: "missing", wantErr: "not found"},
@@ -197,7 +197,7 @@ func TestFilterTasksReadyAndSearch(t *testing.T) {
 
 	tasks := []Task{
 		{ID: "wl-done", Title: "Completed blocker", Status: "done", Kind: "task", Priority: "normal"},
-		{ID: "wl-ready", Title: "Fix parcel editor", Status: "todo", Kind: "bug", Priority: "high", Tags: []string{"editor"}, BlockedBy: []string{"wl-done"}, Repositories: []RepositoryScope{{ID: "github.com/customerio/parcel"}}},
+		{ID: "wl-ready", Title: "Fix web editor", Status: "todo", Kind: "bug", Priority: "high", Tags: []string{"editor"}, BlockedBy: []string{"wl-done"}, Repositories: []RepositoryScope{{ID: "github.com/acme/web"}}},
 		{ID: "wl-blocked", Title: "Wait for API", Status: "todo", Kind: "task", Priority: "normal", BlockedBy: []string{"wl-missing"}},
 	}
 
@@ -205,7 +205,7 @@ func TestFilterTasksReadyAndSearch(t *testing.T) {
 	if len(ready) != 1 || ready[0].ID != "wl-ready" {
 		t.Errorf("ready tasks = %#v", ready)
 	}
-	matching := FilterTasks(tasks, Filter{Repository: "github.com/customerio/parcel", Query: "editor", Tags: []string{"editor"}})
+	matching := FilterTasks(tasks, Filter{Repository: "github.com/acme/web", Query: "editor", Tags: []string{"editor"}})
 	if len(matching) != 1 || matching[0].ID != "wl-ready" {
 		t.Errorf("matching tasks = %#v", matching)
 	}

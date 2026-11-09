@@ -11,16 +11,12 @@ given, Work Ledger uses `WORK_LEDGER_HOME`, then `~/.work-ledger`. `--json`
 prints structured command results; errors are written to standard error and use
 a non-zero exit status.
 
-Existing ledgers are not moved automatically. To keep using one at the former
-default location, set `WORK_LEDGER_HOME=~/work-ledger` or pass
-`--home ~/work-ledger`.
-
 Use `work-ledger help <command>` or `work-ledger <command> --help` for a
 complete description of that command's options and behavior. Both forms work
 without an initialized ledger; `--json` returns the command, usage, purpose,
 and detailed notes as structured data.
 
-Every command that takes a task ID accepts the full ID, a legacy ID, or any
+Every command that takes a task ID accepts the full ID, one of its `legacy_ids`, or any
 unique prefix of the ID; an ambiguous prefix is rejected with the candidates.
 
 Commands that change a task accept `--agent NAME`. When it is omitted, Work
@@ -143,17 +139,3 @@ unexpired claim on unless `--force` is explicit.
 `archive --yes` moves all `done` and `cancelled` tasks to `archive/<year>/`.
 `delete --yes` permanently deletes an active task only when no task, including
 an archived one, names it as a parent or blocker.
-
-## Importing Beans
-
-```sh
-work-ledger import beans PATH [--dry-run] [--repo PATH-OR-ID]...
-```
-
-The importer reads a Beans directory and never modifies it. Use `--dry-run`
-first to validate the source and see the task count. A real import creates new
-Work Ledger IDs, records each original Beans ID under `legacy_ids`, retains the
-Markdown body, and remaps parent/blocker relationships within that import.
-Imported source status is mapped to `done`, `cancelled`, or `todo`; claims are
-not imported. Re-importing a Beans ID already recorded in the ledger is
-rejected.

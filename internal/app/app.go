@@ -30,7 +30,6 @@ Commands:
   close      Mark a task done with a summary.
   archive    Move completed tasks to the archive.
   delete     Permanently remove a task with --yes.
-  import     Import tasks from a Beans directory.
   prime      Print the short guide coding agents read at the start of a session.
   help       Show general or command-specific usage.
 
@@ -118,8 +117,6 @@ func runWithInput(arguments []string, stdin io.Reader, stdout, stderr io.Writer,
 		return runArchive(paths, commandArguments, options.json, stdout, stderr)
 	case "delete":
 		return runDelete(paths, commandArguments, options.json, stdout, stderr)
-	case "import":
-		return runImport(paths, commandArguments, options.json, stdout, stderr)
 	case "prime":
 		return runPrime(paths, commandArguments, options.json, stdout, stderr)
 	default:

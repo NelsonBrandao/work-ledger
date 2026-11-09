@@ -6,7 +6,7 @@ This project publishes source releases. Users install a tagged version with Go:
 go install github.com/NelsonBrandao/work-ledger/cmd/work-ledger@vX.Y.Z
 ```
 
-Prebuilt binaries and checksums are not part of the `v0.1.0` release process.
+Releases are source-only: there are no prebuilt binaries or checksums yet.
 
 ## Checklist
 

@@ -98,7 +98,7 @@ func TestEveryCommandHasHelp(t *testing.T) {
 
 	for _, command := range []string{
 		"init", "doctor", "context", "new", "show", "list", "search", "claim",
-		"release", "edit", "note", "update", "split", "close", "archive", "delete", "import", "prime",
+		"release", "edit", "note", "update", "split", "close", "archive", "delete", "prime",
 	} {
 		var stdout bytes.Buffer
 		var stderr bytes.Buffer
@@ -156,8 +156,8 @@ func TestNewShowListAndSearchJSON(t *testing.T) {
 	if exit := Run([]string{
 		"--home", home,
 		"new", "Migrate publish API",
-		"--repo", "github.com/customerio/parcel",
-		"--repo", "github.com/customerio/services",
+		"--repo", "github.com/acme/web",
+		"--repo", "github.com/acme/api",
 		"--tag", "migration",
 		"--json",
 	}, &stdout, &stderr); exit != 0 {
@@ -186,7 +186,7 @@ func TestNewShowListAndSearchJSON(t *testing.T) {
 	}
 
 	for _, command := range [][]string{
-		{"--home", home, "list", "--repo", "github.com/customerio/services", "--json"},
+		{"--home", home, "list", "--repo", "github.com/acme/api", "--json"},
 		{"--home", home, "list", "--ready", "--json"},
 		{"--home", home, "search", "publish", "--json"},
 	} {
@@ -227,7 +227,7 @@ func TestShowHumanOutputIncludesTaskMetadata(t *testing.T) {
 		"new", "Visible metadata",
 		"--kind", "feature",
 		"--priority", "high",
-		"--repo", "github.com/customerio/parcel",
+		"--repo", "github.com/acme/web",
 		"--tag", "migration",
 		"--parent", parent.ID,
 		"--blocked-by", blocker.ID,
@@ -244,7 +244,7 @@ func TestShowHumanOutputIncludesTaskMetadata(t *testing.T) {
 		"Visible metadata (active, " + created.ID + ")",
 		"Kind: feature",
 		"Priority: high",
-		"Repositories: github.com/customerio/parcel",
+		"Repositories: github.com/acme/web",
 		"Tags: migration",
 		"Parent: " + parent.ID,
 		"Blocked by: " + blocker.ID,
@@ -270,7 +270,7 @@ func TestLifecycleCommands(t *testing.T) {
 	createdOutput := runCommand(t, nil,
 		"--home", home,
 		"new", "Lifecycle parent",
-		"--repo", "github.com/customerio/parcel",
+		"--repo", "github.com/acme/web",
 		"--json",
 	)
 	var parent task.Summary

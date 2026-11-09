@@ -15,12 +15,6 @@ import (
 var ErrConflict = errors.New("task changed since it was read")
 
 func Mutate(paths ledger.Paths, identifier, expectedETag string, apply func(*task.Document) error) (task.Task, error) {
-	return MutateAt(paths, identifier, expectedETag, time.Now(), apply)
-}
-
-// MutateAt is Mutate with an explicit updated timestamp. Importers use it to
-// retain source history; ordinary CLI commands should call Mutate.
-func MutateAt(paths ledger.Paths, identifier, expectedETag string, updatedAt time.Time, apply func(*task.Document) error) (task.Task, error) {
 	initial, err := findDocument(paths.Tasks, identifier)
 	if err != nil {
 		return task.Task{}, err
@@ -41,7 +35,7 @@ func MutateAt(paths ledger.Paths, identifier, expectedETag string, updatedAt tim
 	if err := apply(&document); err != nil {
 		return task.Task{}, err
 	}
-	if err := document.Save(updatedAt); err != nil {
+	if err := document.Save(time.Now()); err != nil {
 		return task.Task{}, err
 	}
 	return document.Task, nil
