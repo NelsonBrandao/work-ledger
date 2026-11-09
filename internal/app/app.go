@@ -19,19 +19,19 @@ Commands:
   doctor     Validate ledger configuration and task files.
   context    Show the current Git repository identity and ledger location.
   new        Create a Markdown task.
-  show       Render one task, including its plan and investigation.
+  show       Render one task and its description.
   list       List tasks, optionally for the current repository or ready to start.
-  search     Search task metadata and Markdown bodies.
+  search     Search task metadata and descriptions.
+  edit       Rewrite or extend a task's description.
   claim      Claim a task for a time-bound agent session.
   release    Release the current agent's claim.
-  note       Append a timestamped Activity note.
   update     Update explicit task metadata with conflict protection.
   split      Create a child task.
   close      Mark a task done with a summary.
   archive    Move completed tasks to the archive.
   delete     Permanently remove a task with --yes.
   import     Import tasks from a Beans directory.
-  prime      Print a complete operating guide for coding agents.
+  prime      Print the short guide coding agents read at the start of a session.
   help       Show general or command-specific usage.
 
 Run work-ledger help <command> or work-ledger <command> --help for details.
@@ -92,8 +92,8 @@ func runWithInput(arguments []string, stdin io.Reader, stdout, stderr io.Writer,
 			return writeError(stderr, options.json, fmt.Errorf("context does not accept arguments"))
 		}
 		return runContext(paths, options.json, stdout, stderr)
-	case "new":
-		return runNew(paths, commandArguments, options.json, stdout, stderr)
+	case "new", "create", "add":
+		return runNew(paths, commandArguments, stdin, options.json, stdout, stderr)
 	case "show":
 		return runShow(paths, commandArguments, options.json, terminal, stdout, stderr)
 	case "list":
@@ -104,12 +104,14 @@ func runWithInput(arguments []string, stdin io.Reader, stdout, stderr io.Writer,
 		return runClaim(paths, commandArguments, options.json, stdout, stderr)
 	case "release":
 		return runRelease(paths, commandArguments, options.json, stdout, stderr)
+	case "edit":
+		return runEdit(paths, commandArguments, stdin, false, options.json, stdout, stderr)
 	case "note":
-		return runNote(paths, commandArguments, stdin, options.json, stdout, stderr)
+		return runEdit(paths, commandArguments, stdin, true, options.json, stdout, stderr)
 	case "update":
 		return runUpdate(paths, commandArguments, options.json, stdout, stderr)
 	case "split":
-		return runSplit(paths, commandArguments, options.json, stdout, stderr)
+		return runSplit(paths, commandArguments, stdin, options.json, stdout, stderr)
 	case "close":
 		return runClose(paths, commandArguments, options.json, stdout, stderr)
 	case "archive":

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -21,6 +22,7 @@ type newOptions struct {
 	kind         string
 	priority     string
 	parent       string
+	description  string
 }
 
 type listOptions struct {
@@ -38,8 +40,8 @@ type showOptions struct {
 	color  colorMode
 }
 
-func runNew(paths ledger.Paths, arguments []string, asJSON bool, stdout, stderr io.Writer) int {
-	options, title, err := parseNewArguments(arguments)
+func runNew(paths ledger.Paths, arguments []string, stdin io.Reader, asJSON bool, stdout, stderr io.Writer) int {
+	options, title, err := parseNewArguments(arguments, stdin)
 	if err != nil {
 		return writeError(stderr, asJSON, err)
 	}
@@ -52,6 +54,20 @@ func runNew(paths ledger.Paths, arguments []string, asJSON bool, stdout, stderr 
 	if err != nil {
 		return writeError(stderr, asJSON, err)
 	}
+	allTasks, err := task.LoadAll(paths.Tasks, paths.Archive)
+	if err != nil {
+		return writeError(stderr, asJSON, err)
+	}
+	if options.parent != "" {
+		parent, err := task.Find(allTasks, options.parent)
+		if err != nil {
+			return writeError(stderr, asJSON, err)
+		}
+		options.parent = parent.ID
+	}
+	if options.blockedBy, err = findTaskIDs(allTasks, options.blockedBy); err != nil {
+		return writeError(stderr, asJSON, err)
+	}
 	created, err := task.New(title, options.kind, options.priority, repositories, time.Now())
 	if err != nil {
 		return writeError(stderr, asJSON, err)
@@ -59,7 +75,8 @@ func runNew(paths ledger.Paths, arguments []string, asJSON bool, stdout, stderr 
 	created.Parent = options.parent
 	created.BlockedBy = options.blockedBy
 	created.Tags = options.tags
-	created, err = task.Create(paths.Tasks, created)
+	created.Body = options.description
+	created, err = task.Create(paths.Tasks, created, task.TakenIDs(allTasks))
 	if err != nil {
 		return writeError(stderr, asJSON, err)
 	}
@@ -230,6 +247,13 @@ func runSearch(paths ledger.Paths, arguments []string, asJSON bool, stdout, stde
 		return writeError(stderr, asJSON, err)
 	}
 	matching := task.FilterTasks(tasks, task.Filter{Query: strings.Join(arguments, " ")})
+	if len(matching) == 0 {
+		var words []task.Task
+		for _, word := range arguments {
+			words = append(words, task.FilterTasks(tasks, task.Filter{Query: word})...)
+		}
+		matching = rankByMatches(words)
+	}
 	summaries := make([]task.Summary, 0, len(matching))
 	for _, matchedTask := range matching {
 		summaries = append(summaries, matchedTask.Summary())
@@ -239,13 +263,13 @@ func runSearch(paths ledger.Paths, arguments []string, asJSON bool, stdout, stde
 	})
 }
 
-func parseNewArguments(arguments []string) (newOptions, string, error) {
+func parseNewArguments(arguments []string, stdin io.Reader) (newOptions, string, error) {
 	var options newOptions
 	var titles []string
 	for index := 0; index < len(arguments); index++ {
 		argument := arguments[index]
 		switch argument {
-		case "--repo", "--tag", "--blocked-by", "--kind", "--priority", "--parent":
+		case "--repo", "--tag", "--blocked-by", "--kind", "--priority", "--parent", "--title", "--description", "--body":
 			if index+1 >= len(arguments) {
 				return options, "", fmt.Errorf("%s requires a value", argument)
 			}
@@ -261,9 +285,13 @@ func parseNewArguments(arguments []string) (newOptions, string, error) {
 			case "--kind":
 				options.kind = value
 			case "--priority":
-				options.priority = value
+				options.priority = normalizePriority(value)
 			case "--parent":
 				options.parent = value
+			case "--title":
+				titles = append(titles, value)
+			case "--description", "--body":
+				options.description = value
 			}
 		default:
 			if strings.HasPrefix(argument, "-") {
@@ -273,7 +301,14 @@ func parseNewArguments(arguments []string) (newOptions, string, error) {
 		}
 	}
 	if len(titles) != 1 {
-		return options, "", errors.New("usage: work-ledger new <title> [--repo <path-or-id>]...")
+		return options, "", errors.New("usage: work-ledger new <title> [--description TEXT|-] [--repo <path-or-id>]...")
+	}
+	if options.description == "-" {
+		contents, err := io.ReadAll(stdin)
+		if err != nil {
+			return options, "", fmt.Errorf("read description from stdin: %w", err)
+		}
+		options.description = string(contents)
 	}
 	return options, titles[0], nil
 }
@@ -352,7 +387,33 @@ func writeTaskList(stdout io.Writer, tasks []task.Summary) {
 		fmt.Fprintln(stdout, "No tasks found.")
 		return
 	}
+	width := 0
 	for _, task := range tasks {
-		fmt.Fprintf(stdout, "%s  %-9s %-8s %s\n", task.ID, task.Status, task.Priority, task.Title)
+		width = max(width, len(task.ID))
 	}
+	for _, task := range tasks {
+		status := task.Status
+		if task.Stale {
+			status = "stale"
+		}
+		fmt.Fprintf(stdout, "%-*s  %-9s %-8s %s\n", width, task.ID, status, task.Priority, task.Title)
+	}
+}
+
+// rankByMatches orders tasks by how many of the per-word searches found them,
+// so a search whose words never appear together still returns the closest
+// tasks.
+func rankByMatches(matches []task.Task) []task.Task {
+	counts := make(map[string]int, len(matches))
+	var unique []task.Task
+	for _, match := range matches {
+		if counts[match.ID] == 0 {
+			unique = append(unique, match)
+		}
+		counts[match.ID]++
+	}
+	sort.SliceStable(unique, func(left, right int) bool {
+		return counts[unique[left].ID] > counts[unique[right].ID]
+	})
+	return unique
 }

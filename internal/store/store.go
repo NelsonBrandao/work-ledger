@@ -100,6 +100,9 @@ func Delete(paths ledger.Paths, identifier string) (task.Task, error) {
 	if err != nil {
 		return task.Task{}, err
 	}
+	if document.ID != identifier && !contains(document.LegacyIDs, identifier) {
+		return task.Task{}, fmt.Errorf("delete needs the full task ID; %q matches %q", identifier, document.ID)
+	}
 	allTasks, err := task.LoadAll(paths.Tasks, paths.Archive)
 	if err != nil {
 		return task.Task{}, err
@@ -119,31 +122,15 @@ func Delete(paths ledger.Paths, identifier string) (task.Task, error) {
 }
 
 func findDocument(directory, identifier string) (task.Document, error) {
-	var found *task.Document
-	err := filepath.WalkDir(directory, func(path string, entry os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if entry.IsDir() || filepath.Ext(path) != ".md" {
-			return nil
-		}
-		document, err := task.LoadDocument(path)
-		if err != nil {
-			return err
-		}
-		if document.ID == identifier || contains(document.LegacyIDs, identifier) {
-			found = &document
-			return filepath.SkipAll
-		}
-		return nil
-	})
+	tasks, err := task.LoadAll(directory)
 	if err != nil {
 		return task.Document{}, fmt.Errorf("find task %q: %w", identifier, err)
 	}
-	if found == nil {
-		return task.Document{}, fmt.Errorf("task %q was not found", identifier)
+	found, err := task.Find(tasks, identifier)
+	if err != nil {
+		return task.Document{}, err
 	}
-	return *found, nil
+	return task.LoadDocument(found.Path)
 }
 
 func archiveYear(updatedAt string) string {

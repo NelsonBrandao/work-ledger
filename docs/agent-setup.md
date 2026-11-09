@@ -57,30 +57,16 @@ Append the following block to the personal-instructions file for each agent in
 the next sections. Do not replace existing personal instructions.
 
 ```md
-## Private work tracking with Work Ledger
+## Work Ledger
 
-For every non-trivial engineering task on this machine:
-
-1. Run `work-ledger prime` before acting; it contains the full command
-   reference and operating protocol.
-2. Run `work-ledger --json list --here --ready` in a Git checkout, then
-   `work-ledger --json search "<relevant words>"` before creating duplicate
-   work.
-3. Create one task for new work, including every affected repository with
-   `--repo`. Claim an existing task before changing code.
-4. Record material decisions and investigation results with `work-ledger note`.
-   When updating a task after reading it, take the `etag` from
-   `work-ledger --json show <id>` and pass it as `--if-match`.
-5. Release the claim when stopping, or close the task with a useful summary
-   when finished. Do not archive or delete without the command's explicit
-   `--yes` confirmation.
-
-Work Ledger data is private local state. Never create, edit, add, commit, or
-push ledger task files from a source repository.
+Run `work-ledger prime` at the start of each session and follow it.
 ```
 
-The [CLI reference](cli-reference.md) is the durable human reference. `prime`
-contains the same agent-oriented operating detail directly in the terminal.
+That one line is the whole setup. The guide `prime` prints ships with the
+CLI, so upgrading `work-ledger` updates what every agent reads. It explains
+what belongs in the ledger (breakdowns of large work, and finds noticed in
+passing), when an agent creates a task on its own, and the commands to use.
+The [CLI reference](cli-reference.md) is the full human reference.
 
 ## 3. Codex setup
 
@@ -172,14 +158,14 @@ The CLI identifies checkouts from their normalized `origin` remotes. Use
 `work-ledger context` to inspect the current identity, and configure fork
 aliases in the private `ledger.yaml` file when needed.
 
-For concurrent local agents, use a distinct agent name and an ETag when making
-a read-modify-write change:
+Claims are named after the agent session. Work Ledger uses `--agent` when it is
+given, then `WORK_LEDGER_AGENT`, then the Claude Code or Codex session ID, then
+`manual`. A claim that expired, because its session ended without releasing it,
+can be taken over by any agent, and `list --ready` reports such tasks as
+`stale`:
 
 ```sh
-work-ledger claim wl-01... --agent codex/api-migration
-work-ledger note wl-01... "Confirmed the migration boundary" --agent codex/api-migration
-work-ledger close wl-01... "Moved the endpoint and verified the callers" --agent codex/api-migration
+work-ledger claim move-api-endpoint
+work-ledger edit move-api --append "Confirmed the migration boundary."
+work-ledger close move-api "Moved the endpoint and verified the callers"
 ```
-
-Set `WORK_LEDGER_AGENT` to choose a default identity for interactive commands;
-an explicit `--agent` always takes precedence.

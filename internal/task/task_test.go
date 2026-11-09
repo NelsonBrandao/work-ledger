@@ -65,15 +65,15 @@ func TestNewCreateAndLoad(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New returned an error: %v", err)
 	}
-	if !strings.HasPrefix(created.ID, "wl-") {
-		t.Errorf("ID = %q, want a wl- prefix", created.ID)
+	if created.ID != "plan-parcel-services" {
+		t.Errorf("ID = %q, want plan-parcel-services", created.ID)
 	}
-	if got := FileName(created); !strings.HasSuffix(got, "-plan-parcel-services.md") {
+	if got := FileName(created); got != "plan-parcel-services.md" {
 		t.Errorf("FileName = %q", got)
 	}
 
 	directory := t.TempDir()
-	created, err = Create(directory, created)
+	created, err = Create(directory, created, nil)
 	if err != nil {
 		t.Fatalf("Create returned an error: %v", err)
 	}
@@ -92,8 +92,103 @@ func TestNewCreateAndLoad(t *testing.T) {
 	if loaded.Title != created.Title {
 		t.Errorf("loaded title = %q, want %q", loaded.Title, created.Title)
 	}
-	if !strings.Contains(loaded.Body, "## Investigation") {
-		t.Errorf("created body = %q, want an Investigation section", loaded.Body)
+	if strings.TrimSpace(loaded.Body) != "# Plan Parcel & Services" {
+		t.Errorf("created body = %q, want only the title heading", loaded.Body)
+	}
+}
+
+func TestSlugID(t *testing.T) {
+	t.Parallel()
+
+	for _, testCase := range []struct{ title, want string }{
+		{"CON-8538: revive Design Studio render warmer (stage 3/9)", "con-8538-revive-design-studio-render"},
+		{"Fix: UpdateSnippet ignores URL :id", "fix-updatesnippet-ignores-url-id"},
+		{"Café ümlaut", "caf-mlaut"},
+		{"Supercalifragilisticexpialidocious-and-then-some-more-words-still", "supercalifragilisticexpialidocious-and-then-some"},
+		{"!!!", "task"},
+	} {
+		if got := slugID(testCase.title); got != testCase.want {
+			t.Errorf("slugID(%q) = %q, want %q", testCase.title, got, testCase.want)
+		}
+	}
+}
+
+func TestCreateAddsSuffixWhenIDIsTaken(t *testing.T) {
+	t.Parallel()
+
+	directory := t.TempDir()
+	now := time.Date(2026, time.July, 15, 14, 0, 0, 0, time.UTC)
+	taken := map[string]bool{"archived-one": true}
+	var ids []string
+	for _, title := range []string{"Same title", "Same title", "Archived one"} {
+		created, err := New(title, "", "", nil, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		created, err = Create(directory, created, taken)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, created.ID)
+	}
+	if ids[0] != "same-title" {
+		t.Errorf("first ID = %q, want same-title", ids[0])
+	}
+	for _, id := range ids[1:] {
+		if len(id) < 5 || id[len(id)-5] != '-' {
+			t.Errorf("ID %q has no suffix", id)
+		}
+	}
+	if !strings.HasPrefix(ids[1], "same-title-") || !strings.HasPrefix(ids[2], "archived-one-") {
+		t.Errorf("IDs = %v", ids)
+	}
+}
+
+func TestFindAcceptsUniquePrefix(t *testing.T) {
+	t.Parallel()
+
+	tasks := []Task{
+		{ID: "fix-login-redirect"},
+		{ID: "fix-login-timeout"},
+		{ID: "wl-01kp6s06y88hjrre72pfw9chn6", LegacyIDs: []string{"parcel-4r6q"}},
+	}
+	for _, testCase := range []struct{ identifier, want, wantErr string }{
+		{identifier: "fix-login-t", want: "fix-login-timeout"},
+		{identifier: "fix-login-redirect", want: "fix-login-redirect"},
+		{identifier: "parcel-4r6q", want: "wl-01kp6s06y88hjrre72pfw9chn6"},
+		{identifier: "wl-01kp6", want: "wl-01kp6s06y88hjrre72pfw9chn6"},
+		{identifier: "fix-login", wantErr: "ambiguous"},
+		{identifier: "missing", wantErr: "not found"},
+	} {
+		found, err := Find(tasks, testCase.identifier)
+		if testCase.wantErr != "" {
+			if err == nil || !strings.Contains(err.Error(), testCase.wantErr) {
+				t.Errorf("Find(%q) error = %v, want %q", testCase.identifier, err, testCase.wantErr)
+			}
+			continue
+		}
+		if err != nil || found.ID != testCase.want {
+			t.Errorf("Find(%q) = %q, %v; want %q", testCase.identifier, found.ID, err, testCase.want)
+		}
+	}
+}
+
+func TestStaleClaims(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.November, 3, 12, 0, 0, 0, time.UTC)
+	tasks := []Task{
+		{ID: "held", Status: "active", Claim: &Claim{Agent: "a", ExpiresAt: "2026-11-03T13:00:00Z"}},
+		{ID: "expired", Status: "active", Claim: &Claim{Agent: "a", ExpiresAt: "2026-11-03T11:00:00Z"}},
+		{ID: "unclaimed", Status: "active"},
+		{ID: "todo", Status: "todo"},
+	}
+	var ready []string
+	for _, found := range FilterTasks(tasks, Filter{Ready: true, Now: now}) {
+		ready = append(ready, found.ID)
+	}
+	if strings.Join(ready, ",") != "expired,unclaimed,todo" {
+		t.Errorf("ready = %v", ready)
 	}
 }
 

@@ -105,9 +105,22 @@ func newTask(t *testing.T, paths ledger.Paths, title string) task.Task {
 	if err != nil {
 		t.Fatal(err)
 	}
-	created, err = task.Create(paths.Tasks, created)
+	created, err = task.Create(paths.Tasks, created, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return created
+}
+
+func TestDeleteRequiresTheFullID(t *testing.T) {
+	t.Parallel()
+
+	paths := newLedger(t)
+	created := newTask(t, paths, "Remove me")
+	if _, err := Delete(paths, "remove"); err == nil || !strings.Contains(err.Error(), "full task ID") {
+		t.Fatalf("Delete by prefix error = %v", err)
+	}
+	if _, err := Delete(paths, created.ID); err != nil {
+		t.Fatalf("Delete by ID: %v", err)
+	}
 }

@@ -2,6 +2,7 @@ package task
 
 import (
 	"crypto/rand"
+	"encoding/base32"
 	"errors"
 	"fmt"
 	"os"
@@ -11,7 +12,6 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/oklog/ulid/v2"
 	"gopkg.in/yaml.v3"
 )
 
@@ -80,6 +80,7 @@ type Filter struct {
 	Tags       []string
 	Ready      bool
 	Query      string
+	Now        time.Time
 }
 
 // Summary is the compact task view returned by list and search. It avoids
@@ -92,7 +93,11 @@ type Summary struct {
 	Priority     string            `json:"priority"`
 	Repositories []RepositoryScope `json:"repositories"`
 	Tags         []string          `json:"tags,omitempty"`
+	Parent       string            `json:"parent,omitempty"`
+	Claim        *Claim            `json:"claim,omitempty"`
+	Stale        bool              `json:"stale,omitempty"`
 	UpdatedAt    string            `json:"updated_at"`
+	Path         string            `json:"path,omitempty"`
 }
 
 func New(title, kind, priority string, repositories []RepositoryScope, now time.Time) (Task, error) {
@@ -102,14 +107,10 @@ func New(title, kind, priority string, repositories []RepositoryScope, now time.
 	if priority == "" {
 		priority = "normal"
 	}
-	identifier, err := ulid.New(ulid.Timestamp(now), rand.Reader)
-	if err != nil {
-		return Task{}, fmt.Errorf("generate task ID: %w", err)
-	}
 	timestamp := now.UTC().Format(time.RFC3339)
 	task := Task{
 		Schema:       Schema,
-		ID:           "wl-" + strings.ToLower(identifier.String()),
+		ID:           slugID(title),
 		Title:        strings.TrimSpace(title),
 		Kind:         kind,
 		Status:       "todo",
@@ -117,7 +118,6 @@ func New(title, kind, priority string, repositories []RepositoryScope, now time.
 		Repositories: deduplicateRepositories(repositories),
 		CreatedAt:    timestamp,
 		UpdatedAt:    timestamp,
-		Body:         defaultBody(),
 	}
 	if err := task.Validate(); err != nil {
 		return Task{}, err
@@ -125,7 +125,37 @@ func New(title, kind, priority string, repositories []RepositoryScope, now time.
 	return task, nil
 }
 
-func Create(directory string, task Task) (Task, error) {
+// Create writes a new task file. When the task's ID is in taken or already has
+// a file, a short random suffix is appended until the ID is free; taken is
+// updated with the final ID.
+func Create(directory string, task Task, taken map[string]bool) (Task, error) {
+	base := task.ID
+	for attempt := 0; ; attempt++ {
+		if attempt > 0 {
+			suffix, err := randomSuffix()
+			if err != nil {
+				return Task{}, err
+			}
+			task.ID = base + "-" + suffix
+		}
+		if taken[task.ID] {
+			continue
+		}
+		created, err := createFile(directory, task)
+		if errors.Is(err, os.ErrExist) && attempt < 8 {
+			continue
+		}
+		if err != nil {
+			return Task{}, err
+		}
+		if taken != nil {
+			taken[created.ID] = true
+		}
+		return created, nil
+	}
+}
+
+func createFile(directory string, task Task) (Task, error) {
 	contents, err := Render(task)
 	if err != nil {
 		return Task{}, err
@@ -146,6 +176,18 @@ func Create(directory string, task Task) (Task, error) {
 	return task, nil
 }
 
+// TakenIDs returns every ID and legacy ID in tasks, for Create.
+func TakenIDs(tasks []Task) map[string]bool {
+	taken := make(map[string]bool, len(tasks))
+	for _, task := range tasks {
+		taken[task.ID] = true
+		for _, legacyID := range task.LegacyIDs {
+			taken[legacyID] = true
+		}
+	}
+	return taken
+}
+
 func Render(task Task) ([]byte, error) {
 	if err := task.Validate(); err != nil {
 		return nil, err
@@ -154,15 +196,17 @@ func Render(task Task) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("encode task frontmatter: %w", err)
 	}
-	body := task.Body
-	if body == "" {
-		body = defaultBody()
+	body := strings.TrimSpace(task.Body)
+	if body != "" {
+		body = "\n" + body + "\n"
 	}
-	return []byte("---\n" + string(frontmatter) + "---\n\n# " + task.Title + "\n\n" + strings.TrimPrefix(body, "\n")), nil
+	return []byte("---\n" + string(frontmatter) + "---\n\n# " + task.Title + "\n" + body), nil
 }
 
+// FileName is <id>.md. Tasks created before slug IDs are named
+// <id>-<title-slug>.md and keep that name.
 func FileName(task Task) string {
-	return task.ID + "-" + slugify(task.Title) + ".md"
+	return task.ID + ".md"
 }
 
 func Load(path string) (Task, error) {
@@ -208,7 +252,9 @@ func LoadAll(directories ...string) ([]Task, error) {
 	return tasks, nil
 }
 
+// Find resolves an exact ID or legacy ID, then a unique ID prefix.
 func Find(tasks []Task, identifier string) (Task, error) {
+	identifier = strings.TrimSpace(identifier)
 	for _, task := range tasks {
 		if task.ID == identifier {
 			return task, nil
@@ -219,10 +265,31 @@ func Find(tasks []Task, identifier string) (Task, error) {
 			}
 		}
 	}
-	return Task{}, fmt.Errorf("task %q was not found", identifier)
+	var matches []Task
+	if identifier != "" {
+		for _, task := range tasks {
+			if strings.HasPrefix(task.ID, identifier) {
+				matches = append(matches, task)
+			}
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return Task{}, fmt.Errorf("task %q was not found", identifier)
+	case 1:
+		return matches[0], nil
+	}
+	ids := make([]string, 0, len(matches))
+	for _, match := range matches {
+		ids = append(ids, match.ID)
+	}
+	return Task{}, fmt.Errorf("task %q is ambiguous: %s", identifier, strings.Join(ids, ", "))
 }
 
 func FilterTasks(tasks []Task, filter Filter) []Task {
+	if filter.Now.IsZero() {
+		filter.Now = time.Now()
+	}
 	byID := make(map[string]Task, len(tasks))
 	for _, task := range tasks {
 		byID[task.ID] = task
@@ -242,7 +309,7 @@ func FilterTasks(tasks []Task, filter Filter) []Task {
 		if len(filter.Tags) > 0 && !sharesValue(task.Tags, filter.Tags) {
 			continue
 		}
-		if filter.Ready && !task.IsReady(byID) {
+		if filter.Ready && !task.IsReady(byID) && !task.IsStale(filter.Now) {
 			continue
 		}
 		if filter.Query != "" && !strings.Contains(strings.ToLower(task.searchableText()), strings.ToLower(filter.Query)) {
@@ -261,7 +328,7 @@ func ValidateCollection(tasks []Task) error {
 		}
 		if task.Path != "" {
 			filename := filepath.Base(task.Path)
-			if !strings.HasPrefix(filename, task.ID+"-") || filepath.Ext(filename) != ".md" {
+			if filename != FileName(task) && (!strings.HasPrefix(filename, task.ID+"-") || filepath.Ext(filename) != ".md") {
 				return fmt.Errorf("task %q has an invalid filename %q", task.ID, filename)
 			}
 		}
@@ -300,8 +367,30 @@ func (task Task) Summary() Summary {
 		Priority:     task.Priority,
 		Repositories: task.Repositories,
 		Tags:         task.Tags,
+		Parent:       task.Parent,
+		Claim:        task.Claim,
+		Stale:        task.IsStale(time.Now()),
 		UpdatedAt:    task.UpdatedAt,
+		Path:         task.Path,
 	}
+}
+
+// IsStale reports an active task whose claim has expired, or that has no
+// claim: the session that held it stopped without releasing or closing it.
+func (task Task) IsStale(now time.Time) bool {
+	if task.Status != "active" {
+		return false
+	}
+	return !task.Claim.Held(now)
+}
+
+// Held reports whether the claim exists and has not expired.
+func (claim *Claim) Held(now time.Time) bool {
+	if claim == nil {
+		return false
+	}
+	expiresAt, err := time.Parse(time.RFC3339, claim.ExpiresAt)
+	return err == nil && expiresAt.After(now)
 }
 
 func (task Task) IsReady(tasksByID map[string]Task) bool {
@@ -358,10 +447,6 @@ func splitFrontmatter(contents string) (frontmatter, body string, err error) {
 	return remainder[:separator], remainder[separator+len("\n---\n"):], nil
 }
 
-func defaultBody() string {
-	return "## Plan\n\n- [ ]\n\n## Investigation\n\n## Activity\n"
-}
-
 func deduplicateRepositories(repositories []RepositoryScope) []RepositoryScope {
 	seen := make(map[string]bool, len(repositories))
 	var unique []RepositoryScope
@@ -375,25 +460,62 @@ func deduplicateRepositories(repositories []RepositoryScope) []RepositoryScope {
 	return unique
 }
 
-func slugify(value string) string {
-	var builder strings.Builder
-	previousHyphen := false
-	for _, character := range strings.ToLower(value) {
-		if unicode.IsLetter(character) || unicode.IsDigit(character) {
-			builder.WriteRune(character)
-			previousHyphen = false
-			continue
-		}
-		if builder.Len() > 0 && !previousHyphen {
-			builder.WriteByte('-')
-			previousHyphen = true
+const (
+	maxSlugWords  = 6
+	maxSlugLength = 48
+)
+
+// slugID turns a title into a short, typeable ID: lowercase ASCII words
+// joined by hyphens, cut at a word boundary.
+func slugID(title string) string {
+	var words []string
+	var word strings.Builder
+	flush := func() {
+		if word.Len() > 0 {
+			words = append(words, word.String())
+			word.Reset()
 		}
 	}
-	slug := strings.Trim(builder.String(), "-")
+	for _, character := range strings.ToLower(title) {
+		if character < unicode.MaxASCII && (unicode.IsLetter(character) || unicode.IsDigit(character)) {
+			word.WriteRune(character)
+			continue
+		}
+		flush()
+	}
+	flush()
+
+	var slug string
+	for index, word := range words {
+		if index == maxSlugWords {
+			break
+		}
+		candidate := word
+		if slug != "" {
+			candidate = slug + "-" + word
+		}
+		if len(candidate) > maxSlugLength {
+			if slug == "" {
+				slug = word[:maxSlugLength]
+			}
+			break
+		}
+		slug = candidate
+	}
 	if slug == "" {
 		return "task"
 	}
 	return slug
+}
+
+var suffixEncoding = base32.NewEncoding("0123456789abcdefghjkmnpqrstvwxyz").WithPadding(base32.NoPadding)
+
+func randomSuffix() (string, error) {
+	buffer := make([]byte, 3)
+	if _, err := rand.Read(buffer); err != nil {
+		return "", fmt.Errorf("generate task ID suffix: %w", err)
+	}
+	return suffixEncoding.EncodeToString(buffer)[:4], nil
 }
 
 func contains(values []string, target string) bool {
